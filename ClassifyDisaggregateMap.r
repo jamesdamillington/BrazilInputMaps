@@ -10,21 +10,21 @@ library(readxl)
 ################
 ##Script settings
 
-input_path <- "C:/Users/k1076631/Google Drive/Shared/Crafty Telecoupling/Data/"
+input_path <- "C:/Users/k1076631/Google Drive/Shared/Crafty Telecoupling/Data/LandCover/MapBiomas23/BrazilInputMaps/"
 
 #unzip data as needed 
-unzip(zipfile="Data/MapBiomas_23_ASCII_unclassified_allYears.zip",exdir="Data")  #mosaicked and resampled to 5km
-unzip(zipfile="Data/PlantedAreas/PlantedArea_IBGE.zip",exdir="Data")  #planted area data compiled from IBGE tables
+unzip(zipfile=paste0(input_path,"Data/MapBiomas_23_ASCII_unclassified_allYears.zip"),exdir="Data")  #mosaicked and resampled to 5km
+unzip(zipfile=paste0(input_path,"Data/PlantedArea_IBGE.zip"),exdir=paste0(input_path,"Data/PlantedAreas"))  #planted area data compiled from IBGE tables
 
 #Classification from Excel
-classification <- read_excel("Data/MapBiomas_CRAFTY_classifications.xlsx", sheet = "PastureB", range="B2:C21", col_names=F)  
+classification <- read_excel(paste0(input_path,"Data/MapBiomas_CRAFTY_classifications.xlsx"), sheet = "PastureB", range="B2:C21", col_names=F)  
 cname <- "PastureB"
 
 #classify for the following years
 yrs <- seq(2001, 2015, 1)   
 
 #map for our study area, cell values are municipality IDs
-munis.r <- raster(paste0(input_path,"CRAFTYInput/Data/sim10_BRmunis_latlon_5km_2018-04-27.asc")) 
+munis.r <- raster(paste0(input_path,"Data/sim10_BRmunis_latlon_5km_2018-04-27.asc")) 
 
 #indicate whether to create summary tables or not
 sumTab <- T
@@ -59,13 +59,13 @@ getLCs <- function(data)
   
   data %>%
     group_by(muniID) %>%
-    dplyr::summarise(LC1 = round(sum(lc2000 == 1, na.rm = T) / sum(!is.na(lc2000)), 3),
-                     LC2 = round(sum(lc2000 == 2, na.rm = T) / sum(!is.na(lc2000)), 3),
-                     LC3 = round(sum(lc2000 == 3, na.rm = T) / sum(!is.na(lc2000)), 3),
-                     LC4 = round(sum(lc2000 == 4, na.rm = T) / sum(!is.na(lc2000)), 3),
-                     LC5 = round(sum(lc2000 == 5, na.rm = T) / sum(!is.na(lc2000)), 3),
-                     NonNAs = sum(!is.na(lc2000)),
-                     NAs = sum(is.na(lc2000))
+    dplyr::summarise(LC1 = round(sum(lcMap == 1, na.rm = T) / sum(!is.na(lcMap)), 3),
+                     LC2 = round(sum(lcMap == 2, na.rm = T) / sum(!is.na(lcMap)), 3),
+                     LC3 = round(sum(lcMap == 3, na.rm = T) / sum(!is.na(lcMap)), 3),
+                     LC4 = round(sum(lcMap == 4, na.rm = T) / sum(!is.na(lcMap)), 3),
+                     LC5 = round(sum(lcMap == 5, na.rm = T) / sum(!is.na(lcMap)), 3),
+                     NonNAs = sum(!is.na(lcMap)),
+                     NAs = sum(is.na(lcMap))
     ) -> LCs
 
   return(LCs)
@@ -405,11 +405,16 @@ createSummaryTables <- function(munisMap, yrs){
 ################
 ##Classify 
 
+if(!dir.exists(paste0(input_path,"Data/Classified"))){
+  dir.create(paste0(input_path,"Data/Classified"))
+}
+
+
 for(yr in seq_along(yrs)){
   
   map <- raster(paste0("Data/ASCII/brazillc_",yrs[yr],"_5km_int.txt"))  #read pre-classified data
   map <- reclassify(map, rcl=as.matrix(classification))                 #classify
-  writeRaster(map, paste0("Data/Classified/LandCover",yrs[yr],"_",cname,".asc"), format = 'ascii', overwrite=T)  #output
+  writeRaster(map, paste0(input_path,"Data/Classified/LandCover",yrs[yr],"_",cname,".asc"), format = 'ascii', overwrite=T)  #output
 }
 
 
@@ -417,7 +422,7 @@ for(yr in seq_along(yrs)){
 ################
 ##Disaggregate 
 
-#may need to create summary tables of pre-classified maps first (can take some time)
+#may need to create summary tables of pre-classified maps first 
 if(sumTab){
   createSummaryTables(munis.r, yrs)
 }
@@ -496,8 +501,8 @@ for(yr in seq_along(yrs)){
   #now update map
   #read muniID map -> get x,y,z
   #load the rasters
-  munis.r <- raster(paste0(input_path,sim_map))
-  lc.r <- raster(paste0("Data/ASCII/brazillc_",yrs[yr],"_PastureB.asc"))
+  #munis.r <- raster(munis.r)
+  lc.r <- raster(paste0("Data/Classified/LandCover",yrs[yr],"_",cname,".asc"))
   
   munis.t <- extractXYZ(munis.r, addCellID = F)
   lc.t <- extractXYZ(lc.r, addCellID = F)
@@ -524,7 +529,7 @@ for(yr in seq_along(yrs)){
   final <- data.frame() 
 
   #for testing
-  dummy <- c(3527603,3527603,3527504,3527504,3528205)
+  #dummy <- c(3527603,3527603,3527504,3527504,3528205)
     
   #loop through all munis to update https://stackoverflow.com/a/13916342/10219907
   for(i in 1:length(unique(diffs$muniID))) {
@@ -556,15 +561,20 @@ for(yr in seq_along(yrs)){
   cells <- cellFromRowCol(final.r, final$row, final$col)
   final.r[cells] <- final$lc
 
+  #becasue there are a few munis with no planted data we end up with some 'holes' in the data
+  #fill those holes with the original lc data
+  final.cov <- cover(final.r, lc.r)
+  final.r <- mask(final.cov, munis.r) 
+  
   ##THIS SHOULD HAPPEN WHEN CREATING region file...
   #read protected map 
-  Lprotect <- raster('Data/landProtection/All_ProtectionMap.asc') #land protection is intially identical for all services
+  #Lprotect <- raster('Data/landProtection/All_ProtectionMap.asc') #land protection is intially identical for all services
 
   #protected and pasture, change to nature
-  final.r[final.r == 5 & Lprotect < 1] <- 1
+  #final.r[final.r == 5 & Lprotect < 1] <- 1
 
   
-  writeRaster(final.r, paste0("Data/FinalMaps/brazillc_",yrs[yr],"_",cname,"_Final.asc"), format = 'ascii', overwrite=T)
+  writeRaster(final.r, paste0("Data/Classified/LandCover",yrs[yr],"_",cname,"_Disagg.asc"), format = 'ascii', overwrite=T)
 
 }
 
