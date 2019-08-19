@@ -1,42 +1,37 @@
 
+
+##load libraries
 rm(list=ls())
 library(raster)
 library(tidyverse)
 library(readxl)
 
-################
-##Classify - PastureB classification
 
-#unzip if needed. otherwise assumes original land cover maps are in Data/ASCII 
+################
+##Script settings
+
+input_path <- "C:/Users/k1076631/Google Drive/Shared/Crafty Telecoupling/Data/"
+
+#unzip data as needed 
 unzip(zipfile="Data/MapBiomas_23_ASCII_unclassified_allYears.zip",exdir="Data")  #mosaicked and resampled to 5km
+unzip(zipfile="Data/PlantedAreas/PlantedArea_IBGE.zip",exdir="Data")  #planted area data compiled from IBGE tables
 
 #Classification from Excel
 classification <- read_excel("Data/MapBiomas_CRAFTY_classifications.xlsx", sheet = "PastureB", range="B2:C21", col_names=F)  
 cname <- "PastureB"
 
-years <- seq(2000,2001,1)
+#classify for the following years
+yrs <- seq(2001, 2015, 1)   
 
-for(year in years)
-{
-  map <- raster(paste0("Data/ASCII/brazillc_",year,"_5km_int.txt"))
-  map <- reclassify(map, rcl=as.matrix(classification))
-  writeRaster(map, paste0("Data/LandCover",year,"_",cname,".asc"), format = 'ascii', overwrite=T)
-}
+#map for our study area, cell values are municipality IDs
+munis.r <- raster(paste0(input_path,"CRAFTYInput/Data/sim10_BRmunis_latlon_5km_2018-04-27.asc")) 
 
-unlink("Data/ASCII", recursive = T) #delete ASCII directory created above
-
-
-##End Reclassify - PastureB classification
-################
-
-
+#indicate whether to create summary tables or not
+sumTab <- T
 
 
 ################
-##Disaggregate 
-
-
-##Functions for Disaggregating
+##Functions 
 
 #function converts raster to xyz  (with help from https://stackoverflow.com/a/19847419)
 #specify input raster, whether nodata cells should be output, whether a unique cell ID should be added
@@ -56,6 +51,24 @@ extractXYZ <- function(raster, nodata = FALSE, addCellID = TRUE){
   }
   
   return(combine)
+}
+
+#function to calculate proportion of each LC in a muni (ignoring NAs, help from https://stackoverflow.com/a/44290753)
+getLCs <- function(data)
+{
+  
+  data %>%
+    group_by(muniID) %>%
+    dplyr::summarise(LC1 = round(sum(lc2000 == 1, na.rm = T) / sum(!is.na(lc2000)), 3),
+                     LC2 = round(sum(lc2000 == 2, na.rm = T) / sum(!is.na(lc2000)), 3),
+                     LC3 = round(sum(lc2000 == 3, na.rm = T) / sum(!is.na(lc2000)), 3),
+                     LC4 = round(sum(lc2000 == 4, na.rm = T) / sum(!is.na(lc2000)), 3),
+                     LC5 = round(sum(lc2000 == 5, na.rm = T) / sum(!is.na(lc2000)), 3),
+                     NonNAs = sum(!is.na(lc2000)),
+                     NAs = sum(is.na(lc2000))
+    ) -> LCs
+
+  return(LCs)
 }
 
 
@@ -329,18 +342,96 @@ convertLCs <- function(convs, lcs) {
 }
 
 
-##Do the disaggregation
 
-yrs <- seq(2001, 2015, 1)   #maps made for all these years
+#function to create summary table for each pre-classified map for comparison below
+#output tables contain proportions of LCs and count of data and NA cells for each muni (munis are rows)
+createSummaryTables <- function(munisMap, yrs){
 
+  for(yr in seq_along(yrs)){
+
+    print(paste0("Creating Summary Table, year: ", yrs[yr]))
+
+    
+    inname <- paste0("Data/Classified/LandCover",yrs[yr],"_",cname,".asc") 
+    outname <- paste0("Data/Classified/SummaryTable",yrs[yr],"_",cname,".csv")
+    
+    lcMap <- raster(inname)
+    
+    
+    #extract cell values to table format
+    munis.t <- extractXYZ(munisMap, addCellID = F)
+    lcMap.t <- extractXYZ(lcMap, addCellID = F)
+    
+    munis.t <- as.data.frame(munis.t)
+    munis.t <- plyr::rename(munis.t, c("vals" = "muniID"))
+    
+    
+    lcMap.t <- as.data.frame(lcMap.t)
+    lcMap.t <- plyr::rename(lcMap.t, c("vals" = "lcMap"))
+    
+    
+    #set NA in both rasters
+    lcMap[is.na(munisMap)] <- NA
+    munisMap[is.na(lcMap)] <- NA
+    
+    #then check what setting NA does....
+    munis.t2 <- extractXYZ(munisMap, addCellID = F)
+    lcMap.t2 <- extractXYZ(lcMap, addCellID = F)
+    
+    munis.t2 <- as.data.frame(munis.t2)
+    munis.t2 <- plyr::rename(munis.t2, c("vals" = "muniID"))
+    
+    
+    lcMap.t2 <- as.data.frame(lcMap.t2)
+    lcMap.t2 <- plyr::rename(lcMap.t2, c("vals" = "lcMap"))
+  
+    #so need to join 
+    lcMap_munis <- left_join(as.data.frame(munis.t), as.data.frame(lcMap.t), by = c("row" = "row", "col" = "col"))
+    
+    #now summarise by muniID
+    lcs <- getLCs(lcMap_munis)
+    
+    #head(lcs)
+    #summary(lcs)
+    
+    #write to file
+    write.csv(lcs, outname, row.names = F)
+  
+  }
+}
+
+
+
+################
+##Classify 
+
+for(yr in seq_along(yrs)){
+  
+  map <- raster(paste0("Data/ASCII/brazillc_",yrs[yr],"_5km_int.txt"))  #read pre-classified data
+  map <- reclassify(map, rcl=as.matrix(classification))                 #classify
+  writeRaster(map, paste0("Data/Classified/LandCover",yrs[yr],"_",cname,".asc"), format = 'ascii', overwrite=T)  #output
+}
+
+
+
+################
+##Disaggregate 
+
+#may need to create summary tables of pre-classified maps first (can take some time)
+if(sumTab){
+  createSummaryTables(munis.r, yrs)
+}
+
+
+#loop through years disaggregating
 for(yr in seq_along(yrs)){
 
   #yr <- 1 #for testing
   
-  print(paste0("year: ", yrs[yr]))
-  
+  print(paste0("Disaggregating, year: ", yrs[yr]))
+
   #read Summary table for this year - this contains number of cells in each muni (and proportions in each LC)
-  mapped <- read_csv(paste0("C:/Users/k1076631/Google Drive/Shared/Crafty Telecoupling/CRAFTY_testing/CRAFTYOutput/Data/SummaryTables/LCs",yrs[yr],"_PastureB.csv"))
+  mapped <- read_csv(paste0("Data/Classified/SummaryTable",yrs[yr],"_",cname,".csv"))
   
   # From mapbiomas data calculate number of cells for:
   # - agriculture
@@ -366,9 +457,8 @@ for(yr in seq_along(yrs)){
   #  geom_histogram(binwidth=5)
     
   
-  #read planted area data
-  
-  planted <- read_excel(paste0("Data/ObservedLCmaps/PlantedArea_",yrs[yr],".xlsx"), sheet = paste0(yrs[yr]), col_names=T)  
+  #read planted area data (from IBGE)
+  planted <- read_excel(paste0("Data/PlantedAreas/PlantedArea_",yrs[yr],".xlsx"), sheet = paste0(yrs[yr]), col_names=T)  
   #  planted <- read_csv("Data/ObservedLCmaps/PlantedArea_2000-2003.csv")
   
   # #From planted area data calculate number of cells for:
@@ -405,11 +495,9 @@ for(yr in seq_along(yrs)){
   
   #now update map
   #read muniID map -> get x,y,z
-  input_path <- "C:/Users/k1076631/Google Drive/Shared/Crafty Telecoupling/Data/"
-  
   #load the rasters
-  munis.r <- raster(paste0(input_path,"CRAFTYInput/Data/sim10_BRmunis_latlon_5km_2018-04-27.asc"))
-  lc.r <- raster(paste0("Data/ObservedLCmaps/brazillc_",yrs[yr],"_PastureB.asc"))
+  munis.r <- raster(paste0(input_path,sim_map))
+  lc.r <- raster(paste0("Data/ASCII/brazillc_",yrs[yr],"_PastureB.asc"))
   
   munis.t <- extractXYZ(munis.r, addCellID = F)
   lc.t <- extractXYZ(lc.r, addCellID = F)
@@ -468,13 +556,19 @@ for(yr in seq_along(yrs)){
   cells <- cellFromRowCol(final.r, final$row, final$col)
   final.r[cells] <- final$lc
 
+  ##THIS SHOULD HAPPEN WHEN CREATING region file...
   #read protected map 
   Lprotect <- raster('Data/landProtection/All_ProtectionMap.asc') #land protection is intially identical for all services
 
   #protected and pasture, change to nature
   final.r[final.r == 5 & Lprotect < 1] <- 1
 
-  writeRaster(final.r, paste0("Data/ObservedLCmaps/NewAgri_brazillc_",yrs[yr],"_PastureB.asc"), format = 'ascii', overwrite=T)
+  
+  writeRaster(final.r, paste0("Data/FinalMaps/brazillc_",yrs[yr],"_",cname,"_Final.asc"), format = 'ascii', overwrite=T)
 
 }
 
+
+
+unlink("Data/ASCII", recursive = T) #delete ASCII directory created above
+unlink("Data/PlantedAreas", recursive = T) #delete PlantedAreas directory created above
