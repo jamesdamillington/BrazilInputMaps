@@ -412,7 +412,7 @@ if(!dir.exists(paste0(input_path,"Data/Classified"))){
 
 for(yr in seq_along(yrs)){
   
-  map <- raster(paste0("Data/ASCII/brazillc_",yrs[yr],"_5km_int.txt"))  #read pre-classified data
+  map <- raster(paste0(input_path,"Data/ASCII/brazillc_",yrs[yr],"_5km_int.txt"))  #read pre-classified data
   map <- reclassify(map, rcl=as.matrix(classification))                 #classify
   writeRaster(map, paste0(input_path,"Data/Classified/LandCover",yrs[yr],"_",cname,".asc"), format = 'ascii', overwrite=T)  #output
 }
@@ -436,7 +436,7 @@ for(yr in seq_along(yrs)){
   print(paste0("Disaggregating, year: ", yrs[yr]))
 
   #read Summary table for this year - this contains number of cells in each muni (and proportions in each LC)
-  mapped <- read_csv(paste0("Data/Classified/SummaryTable",yrs[yr],"_",cname,".csv"))
+  mapped <- read_csv(paste0(input_path,"Data/Classified/SummaryTable",yrs[yr],"_",cname,".csv"))
   
   # From mapbiomas data calculate number of cells for:
   # - agriculture
@@ -463,7 +463,7 @@ for(yr in seq_along(yrs)){
     
   
   #read planted area data (from IBGE)
-  planted <- read_excel(paste0("Data/PlantedAreas/PlantedArea_",yrs[yr],".xlsx"), sheet = paste0(yrs[yr]), col_names=T)  
+  planted <- read_excel(paste0(input_path,"Data/PlantedAreas/PlantedArea_",yrs[yr],".xlsx"), sheet = paste0(yrs[yr]), col_names=T)  
   #  planted <- read_csv("Data/ObservedLCmaps/PlantedArea_2000-2003.csv")
   
   # #From planted area data calculate number of cells for:
@@ -502,7 +502,7 @@ for(yr in seq_along(yrs)){
   #read muniID map -> get x,y,z
   #load the rasters
   #munis.r <- raster(munis.r)
-  lc.r <- raster(paste0("Data/Classified/LandCover",yrs[yr],"_",cname,".asc"))
+  lc.r <- raster(paste0(input_path,"Data/Classified/LandCover",yrs[yr],"_",cname,".asc"))
   
   munis.t <- extractXYZ(munis.r, addCellID = F)
   lc.t <- extractXYZ(lc.r, addCellID = F)
@@ -566,16 +566,11 @@ for(yr in seq_along(yrs)){
   final.cov <- cover(final.r, lc.r)
   final.r <- mask(final.cov, munis.r) 
   
-  ##THIS SHOULD HAPPEN WHEN CREATING region file...
-  #read protected map 
-  #Lprotect <- raster('Data/landProtection/All_ProtectionMap.asc') #land protection is intially identical for all services
-
   #protected and pasture, change to nature
-  #final.r[final.r == 5 & Lprotect < 1] <- 1
+  Lprotect <- raster(paste0(input_path,"Data/All_ProtectionMap.asc")) #read protected map #land protection is intially identical for all services
+  final.r[final.r == 5 & Lprotect < 1] <- 1   #protected and pasture, change to nature
 
-  
-  writeRaster(final.r, paste0("Data/Classified/LandCover",yrs[yr],"_",cname,"_Disagg.asc"), format = 'ascii', overwrite=T)
-
+  writeRaster(final.r, paste0(input_path,"Data/Classified/LandCover",yrs[yr],"_",cname,"_Disagg.asc"), format = 'ascii', overwrite=T)
 }
 
 
