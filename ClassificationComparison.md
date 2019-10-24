@@ -1,21 +1,14 @@
----
-title: "MapBiomas Classification - Pasture Analysis"
-author: "James D.A. Millington"
-date: "Aug 2019"
-output: 
-  html_document: 
-    keep_md: yes
-    code_folding: hide
-    df_print: paged
----
+MapBiomas Classification - Pasture Analysis
+================
+James D.A. Millington
+Oct 2019
 
-This script analyses pasture areas, meat production and dairy production (and intensities) for all states and years, for two different classifications of the MapBiomas data - one that includes 'Grassland' in our 'Pasture' class and one that does not. See accompanying Excel file for the classifications. Below the two data sources:
+This script analyses pasture areas, meat production and meat 'yield' (intensity) for all states and years, for two different classifications of the MapBiomas data - one that includes 'Grassland' in our 'Pasture' class and one that does not (plus disaggregation of some classes using planted area data). See accompanying Excel file for the classifications. Below the two data sources:
 
-- _MB_ is the original 30m MapBiomas data
-- _Map_ is our aggregated 5km map data
+-   *MB* is the original 30m MapBiomas data
+-   *Map* is our aggregated 5km map data
 
-
-```r
+``` r
 rm(list=ls())
 
 packages <- c(
@@ -32,8 +25,7 @@ packages <- c(
 invisible(lapply(packages, function(xxx) suppressMessages(require(xxx, character.only = TRUE,quietly=TRUE,warn.conflicts = FALSE))))
 ```
 
-
-```r
+``` r
 #raster to xyz  (with help from https://stackoverflow.com/a/19847419)
 #sepcify input raster, whether nodata cells should be output, whether a unique cell ID should be added
 #return is a matrix. note format is row (Y) then col (X)
@@ -73,16 +65,14 @@ getLCs <- function(data)
 }
 ```
 
-
-
-```r
-unzip(zipfile="Data/MapBiomas_23_ASCII_unclassified_allYears.zip")  # unzip all files 
+``` r
+#unzip(zipfile="Data/MapBiomas_23_ASCII_unclassified_allYears.zip")  # unzip all files 
 
 #for 'suppressMessages' see https://stackoverflow.com/a/41229387
-mb_data <- suppressMessages(read_csv("Data/LandCover Data - MapBiomas - Collection 2.3 - 2018.01.04 Municipios.csv"))
+mb_data <- suppressMessages(read_csv("Data/Dados_Cobertura_MapBiomas_4.0_LAND_COVER-MUN_UF.csv"))
 
-unzip(zipfile="Data/sim10_BRmunis_latlon_5km_2018-04-27.zip",files="sim10_BRmunis_latlon_5km_2018-04-27.asc",exdir="ASCII")  # unzip file 
-munis.r <- raster("Data/sim10_BRmunis_latlon_5km_2018-04-27.asc")  #do this with zip file
+#unzip(zipfile="Data/sim10_BRmunis_latlon_5km_2018-04-27.zip",files="sim10_BRmunis_latlon_5km_2018-04-27.asc",exdir="ASCII")  # unzip file 
+munis.r <- raster("Data/BaseMaps/sim10_BRmunis_latlon_5km.asc")  
 
 #extract cell values to table format
 munis.t <- extractXYZ(munis.r, addCellID = F)
@@ -90,20 +80,16 @@ munis.t <- as.data.frame(munis.t)
 munis.t <- plyr::rename(munis.t, c("vals" = "muniID"))
 ```
 
-
-
-```r
+``` r
 #Specify classifications and years to examine. Classifications should be the names of Sheets in the Classifications Excel file. Years should be between 2000 and 2015 
 
 #classifications to loop through 
-cls <- c("PastureA", "PastureB")
+cls <- c("PastureB", "PastureC")
 
-yrls <- seq(2000,2015,1)
+yrls <- seq(2001,2018,1)
 ```
 
-
-
-```r
+``` r
 #lists to hold data tables 
 CData_ls <- vector('list', length(cls))
 CDataW_ls <- vector('list', length(cls))
@@ -119,10 +105,11 @@ names(Stotals_ls) <- cls
 names(SDataW_Adj_ls) <- cls
 names(mapStack_ls) <- cls
 
+
 #loop over classifications
 for(i in seq_along(cls)){
   
-  classification <- read_excel("Data/MapBiomas_CRAFTY_classifications.xlsx", sheet = cls[i], range="B2:C21", col_names=F) 
+  classification <- read_excel("Data/MapBiomas_CRAFTY_classifications_v4.xlsx", sheet = cls[i], range="B2:C28", col_names=F) 
   
   #reset mapStack for this Classification
   mapStack <- stack()
@@ -130,182 +117,180 @@ for(i in seq_along(cls)){
   #loop over years  
   for(j in seq_along(yrls)){
 
-  #print(paste0("Classification: ",cls[i],", Year: ",yrls[j]))
-  
-  map <- raster(paste0("ASCII/brazillc_",yrls[j],"_5km_int.txt"))
-  map <- reclassify(map, rcl=as.matrix(classification))
-  
-  
-  #add categories for later plotting etc. (see https://stackoverflow.com/a/37214431)
-  map <- ratify(map)     #tell R that the map raster is categorical 
-  rat <- levels(map)[[1]]    #apply the levels (i.e. categories) 
- 
-  #not all classes may be present after classification, so conditionally construct labels
-  labs <- c()
-  if(1 %in% levels(map)[[1]]$ID) { labs <- c(labs, "Nature") }
-  if(2 %in% levels(map)[[1]]$ID) { labs <- c(labs, "OtherAgri") }
-  if(3 %in% levels(map)[[1]]$ID) { labs <- c(labs, "Agriculture") }
-  if(4 %in% levels(map)[[1]]$ID) { labs <- c(labs, "Other") }
-  if(5 %in% levels(map)[[1]]$ID) { labs <- c(labs, "Pasture") }
+    #read the classfied map to a raster  
+    map <- raster(paste0("Data/Classified/LandCover",yrls[j],"_",cls[i],"_Disagg.asc"))
     
-  rat$landcover <- labs  
-  levels(map) <- rat 
-  
-  #add to mapStack for later plotting
-  mapStack <- stack(map, mapStack)
-
-  #extract cell values to table format
-  map.t <- extractXYZ(map, addCellID = F)
-  map.t <- as.data.frame(map.t)
-  map.t <- plyr::rename(map.t, c("vals" = "map"))
-
-  #so need to join 
-  map_munis <- left_join(as.data.frame(munis.t), as.data.frame(map.t), by = c("row" = "row", "col" = "col"))
-
-  #now summarise by muniID
-  lcs_map_munis <- getLCs(map_munis)
-
-  #convert cell counts to areas (km2) and add state id
-  map_areas_munis <- lcs_map_munis %>%
-    mutate(LC1area = round(LC1 * NonNAs) * 25) %>%
-    mutate(LC2area = round(LC2 * NonNAs) * 25) %>%
-    mutate(LC3area = round(LC3 * NonNAs) * 25) %>%
-    mutate(LC4area = round(LC4 * NonNAs) * 25) %>%
-    mutate(LC5area = round(LC5 * NonNAs) * 25) %>%
-    mutate(state = substr(muniID, 1, 2))
-
-  #drop original cell-count columns (work with area km2 from now on)
-  map_areas_munis <- map_areas_munis %>% dplyr::select(-LC1, -LC2, -LC3, -LC4, -LC5, -NonNAs, -NAs)
-
-  #summarise muni areas to state level
-  map_areas <- map_areas_munis %>%
-    group_by(state) %>%
-    dplyr::summarise_at(vars(LC1area:LC5area),sum, na.rm=T) %>%  #use _at so state is not summarised
-    mutate_if(is.character, as.integer)
-
-  #gather to long format for union below
-  map_areas <- map_areas %>%
-    gather(key = LCa, value = area, -state)
-  
-  #recode LCs for union below
-  map_areas <- map_areas %>%
-    mutate(LC = if_else(LCa == "LC1area", 1, 
-      if_else(LCa == "LC2area", 2,
-      if_else(LCa == "LC3area", 3,
-      if_else(LCa == "LC4area", 4,
-      if_else(LCa == "LC5area", 5, 0)
-      )))))
-
-  #add source variable for plotting below (re-order to match map table for union below)
-  map_areas <- map_areas %>%
-    dplyr::select(-LCa) %>%
-    mutate(source = "Map") %>%
-    dplyr::select(state, LC, source, area)
-
-  ###Summarise MapBiomas data to the states we are simulating
-
-  #filter to get only the states we want
-  mb_areas <- mb_data %>%
-    filter(Estados == "TOCANTINS" | 
-        Estados == "BAHIA" |
-        Estados == "MINAS GERAIS" |
-        Estados == "SÃO PAULO" |
-        Estados == "PARANÁ" |
-        Estados == "SANTA CATARINA" |
-        Estados == "RIO GRANDE DO SUL" |
-        Estados == "MATO GROSSO DO SUL" |
-        Estados == "MATO GROSSO" |
-        Estados == "GOIÁS")
-  
-  #add state column containing state ids
-  mb_areas <- mb_areas %>%
-    mutate(state = if_else(Estados == "TOCANTINS", 17, 
-      if_else(Estados == "BAHIA", 29,
-      if_else(Estados == "MINAS GERAIS", 31,
-      if_else(Estados == "SÃO PAULO", 35,
-      if_else(Estados == "PARANÁ", 41,
-      if_else(Estados == "SANTA CATARINA", 42,
-      if_else(Estados == "RIO GRANDE DO SUL", 43, 
-      if_else(Estados == "MATO GROSSO DO SUL", 50, 
-      if_else(Estados == "MATO GROSSO", 51,
-      if_else(Estados == "GOIÁS", 52, 0
-      ))))))))))
-    )
-  
+    #add categories for later plotting etc. (see https://stackoverflow.com/a/37214431)
+    map <- ratify(map)     #tell R that the map raster is categorical 
+    rat <- levels(map)[[1]]    #apply the levels (i.e. categories) 
+   
+    #not all classes may be present after classification, so conditionally construct labels
+    labs <- c()
+    if(1 %in% levels(map)[[1]]$ID) { labs <- c(labs, "Nature") }
+    if(2 %in% levels(map)[[1]]$ID) { labs <- c(labs, "OtherAgri") }
+    if(3 %in% levels(map)[[1]]$ID) { labs <- c(labs, "Agriculture") }
+    if(4 %in% levels(map)[[1]]$ID) { labs <- c(labs, "Other") }
+    if(5 %in% levels(map)[[1]]$ID) { labs <- c(labs, "Pasture") }
       
-  #select only columns we want    
-  mb_areas <- mb_areas %>%
-    dplyr::select(state, paste0(yrls[j]), `Classe Nivel 3`) %>% 
-    dplyr::rename(area = paste0(yrls[j]))
-  
-  #because there is no consistency between land cover labels
-  legenda = c("Forest Formations"=1, "Natural Forest Formations"=2, "Dense Forest"=3, "Savanna Formations"=4, "Mangroves"=5,"Forest Plantations"=9, "Non-Forest Natural Formations"=10, "Non Forest Wetlands"=11, "Grasslands"=12, "Other Non Forest Natural Formations"=13, "Farming"=14, "Pasture"=15, "Agriculture"=18, "Agriculture or Pasture"=21, "Non-Vegetated Areas"=22, "Dunes and Beaches"=23, "Urban Infrastructure"=24,"Other Non-Vegetated Area"=25,"Water Bodies"=26, "Non-Observed"=27)
-  
-  #recode to values (which match the map)
-  mb_areas <- mb_areas %>%
-    mutate(LC = recode(`Classe Nivel 3`, !!!legenda))
-  
-  #use the classification values from above to relassify land covers
-  mb_areas$LC <- plyr::mapvalues(mb_areas$LC, from=as.numeric(classification$X__1), to=as.numeric(classification$X__2))
-  
-  #calculate total LC area by state
-  mb_areas <- mb_areas %>%
-    group_by(state, LC) %>%
-    dplyr::summarise_at(vars(area),sum, na.rm=T) 
-  
-  #round to integer
-  mb_areas <- mb_areas %>%
-    mutate(area_km2 = round(area,0))
-  
-  #add source variable for plotting below (re-order to match map table for union below)
-  mb_areas <- mb_areas %>%
-    dplyr::select(-area) %>%
-    mutate(source = "MB") %>%
-    rename(area = area_km2) %>%
-    dplyr::select(state, LC, source, area)
+    rat$landcover <- labs  
+    levels(map) <- rat 
     
-
-  CData_yr <- union_all(map_areas, mb_areas)
-
-  #relabel states to characters
-  CData_yr <- CData_yr %>%
-    mutate(state = if_else(state == 17, "TO", 
-      if_else(state == 29, "BA",
-      if_else(state == 31, "MG",
-      if_else(state == 35, "SP",
-      if_else(state == 41, "PR",
-      if_else(state == 42, "SC",
-      if_else(state == 43, "RS", 
-      if_else(state == 50, "MS",
-      if_else(state == 51, "MT",
-      if_else(state == 52, "GO", "NA"
-      ))))))))))
-    )
+    #add to mapStack for later plotting
+    mapStack <- stack(map, mapStack)
   
-  #relabel LCs to characters
-  CData_yr <- CData_yr %>%
-    mutate(LC = if_else(LC == 1, "Nature", 
-      if_else(LC == 2, "OtherAgri",
-      if_else(LC == 3, "Agri",
-      if_else(LC == 4, "Other",
-      if_else(LC == 5, "Pasture", "NA"
-      )))))
-    )
+    #extract cell values to table format
+    map.t <- extractXYZ(map, addCellID = F)
+    map.t <- as.data.frame(map.t)
+    map.t <- plyr::rename(map.t, c("vals" = "map"))
   
-  #add year column
-  CData_yr <- CData_yr %>%
-    mutate(year = yrls[j])
+    #so need to join 
+    map_munis <- left_join(as.data.frame(munis.t), as.data.frame(map.t), by = c("row" = "row", "col" = "col"))
   
-  #union CData for years here.
-  #if first iteration of classification loop (re)create the tibble
-  if(j == 1){
-      CData <- CData_yr
-  }
+    #now summarise by muniID
+    lcs_map_munis <- getLCs(map_munis)
+  
+    #convert cell counts to areas (km2) and add state id
+    map_areas_munis <- lcs_map_munis %>%
+      mutate(LC1area = round(LC1 * NonNAs) * 25) %>%
+      mutate(LC2area = round(LC2 * NonNAs) * 25) %>%
+      mutate(LC3area = round(LC3 * NonNAs) * 25) %>%
+      mutate(LC4area = round(LC4 * NonNAs) * 25) %>%
+      mutate(LC5area = round(LC5 * NonNAs) * 25) %>%
+      mutate(state = substr(muniID, 1, 2))
+  
+    #drop original cell-count columns (work with area km2 from now on)
+    map_areas_munis <- map_areas_munis %>% dplyr::select(-LC1, -LC2, -LC3, -LC4, -LC5, -NonNAs, -NAs)
+  
+    #summarise muni areas to state level
+    map_areas <- map_areas_munis %>%
+      group_by(state) %>%
+      dplyr::summarise_at(vars(LC1area:LC5area),sum, na.rm=T) %>%  #use _at so state is not summarised
+      mutate_if(is.character, as.integer)
+  
+    #gather to long format for union below
+    map_areas <- map_areas %>%
+      gather(key = LCa, value = area, -state)
     
-  #else join data to tibble (by creating another tibble, then join (ensure rows are not lost)
-  else {
-      CData <- union_all(CData, CData_yr)
-  }
+    #recode LCs for union below
+    map_areas <- map_areas %>%
+      mutate(LC = if_else(LCa == "LC1area", 1, 
+        if_else(LCa == "LC2area", 2,
+        if_else(LCa == "LC3area", 3,
+        if_else(LCa == "LC4area", 4,
+        if_else(LCa == "LC5area", 5, 0)
+        )))))
+  
+    #add source variable for plotting below (re-order to match map table for union below)
+    map_areas <- map_areas %>%
+      dplyr::select(-LCa) %>%
+      mutate(source = "Map") %>%
+      dplyr::select(state, LC, source, area)
+  
+    ###Summarise MapBiomas data to the states we are simulating
+  
+    #filter to get only the states we want
+    mb_areas <- mb_data %>%
+      filter(estado == "TOCANTINS" | 
+          estado == "BAHIA" |
+          estado == "MINAS GERAIS" |
+          estado == "SÃO PAULO" |
+          estado == "PARANÁ" |
+          estado == "SANTA CATARINA" |
+          estado == "RIO GRANDE DO SUL" |
+          estado == "MATO GROSSO DO SUL" |
+          estado == "MATO GROSSO" |
+          estado == "GOIÁS")
+    
+    #add state column containing state ids
+    #mb_areas <- mb_areas %>%
+    #  mutate(state = if_else(Estados == "TOCANTINS", 17, 
+    #    if_else(Estados == "BAHIA", 29,
+    #    if_else(Estados == "MINAS GERAIS", 31,
+    #    if_else(Estados == "SÃO PAULO", 35,
+    #    if_else(Estados == "PARANÁ", 41,
+    #    if_else(Estados == "SANTA CATARINA", 42,
+    #    if_else(Estados == "RIO GRANDE DO SUL", 43, 
+    #    if_else(Estados == "MATO GROSSO DO SUL", 50, 
+    #    if_else(Estados == "MATO GROSSO", 51,
+    #    if_else(Estados == "GOIÁS", 52, 0
+    #    ))))))))))
+    #  )
+    
+        
+    #select only columns we want    
+    mb_areas <- mb_areas %>%
+      dplyr::rename(state = COD_ESTADO) %>%
+      dplyr::select(state, paste0(yrls[j]), `cod.classe`) %>% 
+      dplyr::rename(area = paste0(yrls[j])) %>%
+      dplyr::rename(LC = `cod.classe`) 
+      
+    
+    #because there is no consistency between land cover labels
+   # legenda = c("Forest Formations"=1, "Natural Forest Formations"=2, "Dense Forest"=3, "Savanna Formations"=4, "Mangroves"=5,"Forest Plantations"=9, "Non-Forest Natural Formations"=10, "Non Forest Wetlands"=11, "Grasslands"=12, "Other Non Forest Natural Formations"=13, "Farming"=14, "Pasture"=15, "Agriculture"=18, "Agriculture or Pasture"=21, "Non-Vegetated Areas"=22, "Dunes and Beaches"=23, "Urban Infrastructure"=24,"Other Non-Vegetated Area"=25,"Water Bodies"=26, "Non-Observed"=27)
+    
+    #recode to values (which match the map)
+    #mb_areas <- mb_areas %>%
+    #  mutate(LC = recode(`Classe Nivel 3`, !!!legenda))
+    
+    #use the classification values from above to relassify land covers
+    mb_areas$LC <- plyr::mapvalues(mb_areas$LC, from=as.numeric(classification$X__1), to=as.numeric(classification$X__2))
+    
+    #calculate total LC area by state
+    mb_areas <- mb_areas %>%
+      group_by(state, LC) %>%
+      dplyr::summarise_at(vars(area),sum, na.rm=T) 
+    
+    #round to integer
+    mb_areas <- mb_areas %>%
+      mutate(area_km2 = round(area,0))
+    
+    #add source variable for plotting below (re-order to match map table for union below)
+    mb_areas <- mb_areas %>%
+      dplyr::select(-area) %>%
+      mutate(source = "MB") %>%
+      rename(area = area_km2) %>%
+      dplyr::select(state, LC, source, area)
+      
+  
+    CData_yr <- union_all(map_areas, mb_areas)
+  
+    #relabel states to characters
+    CData_yr <- CData_yr %>%
+      mutate(state = if_else(state == 17, "TO", 
+        if_else(state == 29, "BA",
+        if_else(state == 31, "MG",
+        if_else(state == 35, "SP",
+        if_else(state == 41, "PR",
+        if_else(state == 42, "SC",
+        if_else(state == 43, "RS", 
+        if_else(state == 50, "MS",
+        if_else(state == 51, "MT",
+        if_else(state == 52, "GO", "NA"
+        ))))))))))
+      )
+    
+    #relabel LCs to characters
+    CData_yr <- CData_yr %>%
+      mutate(LC = if_else(LC == 1, "Nature", 
+        if_else(LC == 2, "OtherAgri",
+        if_else(LC == 3, "Agri",
+        if_else(LC == 4, "Other",
+        if_else(LC == 5, "Pasture", "NA"
+        )))))
+      )
+    
+    #add year column
+    CData_yr <- CData_yr %>%
+      mutate(year = yrls[j])
+    
+    #union CData for years here.
+    #if first iteration of classification loop (re)create the tibble
+    if(j == 1){
+        CData <- CData_yr
+    } else {
+        #else join data to tibble (by creating another tibble, then join (ensure rows are not lost)
+        CData <- union_all(CData, CData_yr)
+    }
   }
   
   CData_ls[[i]] <- CData
@@ -315,10 +300,12 @@ for(i in seq_along(cls)){
 }
 ```
 
-#Maps
-For 2000 for the different classifications (for quick visual comparison)
+Maps
+====
 
-```r
+For 2001 for the different classifications (for quick visual comparison)
+
+``` r
 for(i in seq_along(mapStack_ls)){
   
   clabs <- c()
@@ -330,27 +317,23 @@ for(i in seq_along(mapStack_ls)){
   
   print(cls[i])
 
-  print(rasterVis::levelplot(mapStack_ls[[i]]$X2000, pretty=T,att = 'landcover', col.regions=clabs, main=paste0(cls[[i]], " 2000")))
+  print(rasterVis::levelplot(mapStack_ls[[i]]$X2001, pretty=T,att = 'landcover', col.regions=clabs, main=paste0(cls[[i]], " 2001")))
   
 }
 ```
 
-```
-## [1] "PastureA"
-```
+    ## [1] "PastureB"
 
-![](ClassificationComparison_files/figure-html/unnamed-chunk-6-1.png)<!-- -->
+![](ClassificationComparison_files/figure-markdown_github/unnamed-chunk-6-1.png)
 
-```
-## [1] "PastureB"
-```
+    ## [1] "PastureC"
 
-![](ClassificationComparison_files/figure-html/unnamed-chunk-6-2.png)<!-- -->
+![](ClassificationComparison_files/figure-markdown_github/unnamed-chunk-6-2.png)
 
+Pasture area by state, year and classification
+----------------------------------------------
 
-##Pasture area by state, year and classification
-
-```r
+``` r
 #add classification lable to the CData tables
 for(i in seq_along(cls)){
   
@@ -370,9 +353,7 @@ CData_Pas <- CDataU %>%
   dplyr::filter(LC == "Pasture")
 ```
 
-
-
-```r
+``` r
 CData_Pas %>% 
   dplyr::filter(source == "Map") %>%
   ggplot(aes(x=classification, y=area, fill=classification)) + 
@@ -386,9 +367,9 @@ CData_Pas %>%
   ggtitle("Map")
 ```
 
-![](ClassificationComparison_files/figure-html/unnamed-chunk-8-1.png)<!-- -->
+![](ClassificationComparison_files/figure-markdown_github/unnamed-chunk-8-1.png)
 
-```r
+``` r
 CData_Pas %>% 
   dplyr::filter(source == "MB") %>%
   ggplot(aes(x=classification, y=area, fill=classification)) + 
@@ -401,21 +382,14 @@ CData_Pas %>%
   ggtitle("MB")
 ```
 
-![](ClassificationComparison_files/figure-html/unnamed-chunk-8-2.png)<!-- -->
+![](ClassificationComparison_files/figure-markdown_github/unnamed-chunk-8-2.png)
 
-
-
-
-```r
+``` r
 #Load Production Data
-meat_prod_Astates <- read_excel("Data/Cattle_meat_production_Kg_2000_2017_all_states.xlsx", sheet = "Plan1", skip = 1)  #data for all states Astates
+meat_prod_Astates <- read_excel("Data/Cattle_meat_production_Kg_2001_2018_all_states.xlsx", sheet = "Plan1", skip = 1)  #data for all states Astates
 ```
 
-
-
-
-
-```r
+``` r
 #join to pasture areas
 meat_areas <- inner_join(CData_Pas, meat_prod_Fstates_long, by = c("year", "state"))
 
@@ -424,14 +398,13 @@ meat_areas <- meat_areas %>%
   mutate(intensity = kg / area)
 ```
 
+### Production (from Pasture) by state, year and classification
 
-###Production (from Pasture) by state, year and classification
-
-Differentiated between original 30m MapBiomas reported data ( _MB_ ) and our aggregated 5km map data ( _map_ ) and
+Differentiated between original 30m MapBiomas reported data ( *MB* ) and our aggregated 5km map data ( *map* ) and
 
 The next two plots have the same variables on the y-axis (Yield) but the second plot is differently scaled (some bars are not plotted because their value is greater than the limit of the axis).
 
-```r
+``` r
 meat_areas %>% 
   filter(source == "Map") %>%
   ggplot(aes(x=classification, y=intensity, fill=classification)) + 
@@ -443,13 +416,9 @@ meat_areas %>%
   ggtitle("Meat, Map")
 ```
 
-```
-## Warning: Removed 9 rows containing missing values (geom_bar).
-```
+![](ClassificationComparison_files/figure-markdown_github/unnamed-chunk-12-1.png)
 
-![](ClassificationComparison_files/figure-html/unnamed-chunk-12-1.png)<!-- -->
-
-```r
+``` r
 meat_areas %>% 
   filter(source == "MB") %>%
   ggplot(aes(x=classification, y=intensity, fill=classification)) + 
@@ -461,17 +430,16 @@ meat_areas %>%
   ggtitle("Meat, MB")
 ```
 
-![](ClassificationComparison_files/figure-html/unnamed-chunk-12-2.png)<!-- -->
+![](ClassificationComparison_files/figure-markdown_github/unnamed-chunk-12-2.png)
 
-We see SC, SP and RS are all high relative to other states. We also see that yields are generally greatest for _PatureA_ classification and lower for _PastureB_ (which include MapBiomas' _Grassland_ in our definition of Pasture.
+We see SC, SP and RS are all high relative to other states. We also see that yields are generally greatest for *PatureA* classification and lower for *PastureB* (which include MapBiomas' *Grassland* in our definition of Pasture.
 
+Summary stats over time
+-----------------------
 
-##Summary stats over time
 Now let's summarise the data over time and examine their means and medians (with variation - error bar is one SE)
 
-
-
-```r
+``` r
 meat_summary %>%
   #filter(source == "MB") %>%
   ggplot(aes(x=classification, y=int_mn, fill=classification)) + 
@@ -484,9 +452,9 @@ meat_summary %>%
   ggtitle("Meat, Mean")
 ```
 
-![](ClassificationComparison_files/figure-html/unnamed-chunk-14-1.png)<!-- -->
+![](ClassificationComparison_files/figure-markdown_github/unnamed-chunk-14-1.png)
 
-```r
+``` r
 meat_summary %>%
   #filter(source == "Map") %>%
   ggplot(aes(x=classification, y=int_md, fill=classification)) + 
@@ -499,9 +467,9 @@ meat_summary %>%
   ggtitle("Meat, Median")
 ```
 
-![](ClassificationComparison_files/figure-html/unnamed-chunk-14-2.png)<!-- -->
+![](ClassificationComparison_files/figure-markdown_github/unnamed-chunk-14-2.png)
 
-```r
+``` r
 meat_summary %>%
   #filter(source == "Map") %>%
   ggplot(aes(x=classification, y=int_max, fill=classification)) + 
@@ -514,13 +482,13 @@ meat_summary %>%
   ggtitle("Meat, Maxima")
 ```
 
-![](ClassificationComparison_files/figure-html/unnamed-chunk-14-3.png)<!-- -->
+![](ClassificationComparison_files/figure-markdown_github/unnamed-chunk-14-3.png)
 
-Again we see the same patterns; SC, SP and RS are greater than other states and _PastureA_ > _PastureB_.
+Again we see the same patterns; SC, SP and RS are greater than other states and *PastureA* &gt; *PastureB*.
 
 If we plot again, but this time limiting the y-axis to 15,000 kg/km2 (max at 20,000)
 
-```r
+``` r
 meat_summary %>%
   #filter(source == "MB") %>%
   ggplot(aes(x=classification, y=int_mn, fill=classification)) + 
@@ -533,17 +501,9 @@ meat_summary %>%
   ggtitle("Meat, Mean")
 ```
 
-```
-## Warning: Removed 1 rows containing missing values (geom_errorbar).
-```
+![](ClassificationComparison_files/figure-markdown_github/unnamed-chunk-15-1.png)
 
-```
-## Warning: Removed 1 rows containing missing values (geom_bar).
-```
-
-![](ClassificationComparison_files/figure-html/unnamed-chunk-15-1.png)<!-- -->
-
-```r
+``` r
 meat_summary %>%
   #filter(source == "Map") %>%
   ggplot(aes(x=classification, y=int_md, fill=classification)) + 
@@ -556,15 +516,9 @@ meat_summary %>%
   ggtitle("Meat, Median")
 ```
 
-```
-## Warning: Removed 1 rows containing missing values (geom_errorbar).
+![](ClassificationComparison_files/figure-markdown_github/unnamed-chunk-15-2.png)
 
-## Warning: Removed 1 rows containing missing values (geom_bar).
-```
-
-![](ClassificationComparison_files/figure-html/unnamed-chunk-15-2.png)<!-- -->
-
-```r
+``` r
 meat_summary %>%
   #filter(source == "Map") %>%
   ggplot(aes(x=classification, y=int_max, fill=classification)) + 
@@ -577,35 +531,36 @@ meat_summary %>%
   ggtitle("Meat, Maxima")
 ```
 
-```
-## Warning: Removed 2 rows containing missing values (geom_bar).
-```
+![](ClassificationComparison_files/figure-markdown_github/unnamed-chunk-15-3.png)
 
-![](ClassificationComparison_files/figure-html/unnamed-chunk-15-3.png)<!-- -->
+We can now more clearly compare classifications. In some states (PR, SP) *PastureA* and *PastureB* are very similar yield values, but in many others *PastureB* is lower. We also see that yields are greater for *MB* data compared to *Map*. (NB: *PastureB* for SC is very similar for MB data)
 
-We can now more clearly compare classifications. In some states (PR, SP) _PastureA_ and _PastureB_ are very similar yield values, but in many others _PastureB_ is lower. We also see that yields are greater for  _MB_ data compared to _Map_. (NB: _PastureB_ for SC is very similar for MB data)
+Using the *PastureB* classification the 'perfect' meat yield would be ~9,200 kg km2 if using mean/median or ~11,000 if using max (see raw tables of summary data below)
 
-Using the _PastureB_ classification the 'perfect' meat yield would be ~9,200 kg km2 if using mean/median or ~11,000 if using max (see raw tables of summary data below)
-
-
-```r
+``` r
 meat_summary %>%
   filter(source == "Map" & classification == "PastureB") %>%
   dplyr::select(-starts_with("prod"), -int_sd, -int_se) %>%
   filter(state != "SC") 
 ```
 
-<div data-pagedtable="false">
-  <script data-pagedtable-source type="application/json">
-{"columns":[{"label":["state"],"name":[1],"type":["chr"],"align":["left"]},{"label":["classification"],"name":[2],"type":["chr"],"align":["left"]},{"label":["source"],"name":[3],"type":["chr"],"align":["left"]},{"label":["area_mn"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["area_md"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["area_sd"],"name":[6],"type":["dbl"],"align":["right"]},{"label":["int_mn"],"name":[7],"type":["dbl"],"align":["right"]},{"label":["int_md"],"name":[8],"type":["dbl"],"align":["right"]},{"label":["int_max"],"name":[9],"type":["dbl"],"align":["right"]}],"data":[{"1":"BA","2":"PastureB","3":"Map","4":"185330","5":"190238","6":"14493","7":"1151","8":"1272","9":"1710"},{"1":"GO","2":"PastureB","3":"Map","4":"220059","5":"223062","6":"9109","7":"2913","8":"2893","9":"3764"},{"1":"MG","2":"PastureB","3":"Map","4":"273078","5":"274412","6":"17617","7":"1871","8":"2070","9":"2576"},{"1":"MS","2":"PastureB","3":"Map","4":"237114","5":"238938","6":"5595","7":"3514","8":"3442","9":"4206"},{"1":"MT","2":"PastureB","3":"Map","4":"275080","5":"281712","6":"19073","7":"3433","8":"3627","9":"4967"},{"1":"PR","2":"PastureB","3":"Map","4":"48111","5":"48988","6":"2616","7":"5867","8":"6187","9":"7566"},{"1":"RS","2":"PastureB","3":"Map","4":"141067","5":"140112","6":"7721","7":"2560","8":"2662","9":"3240"},{"1":"SP","2":"PastureB","3":"Map","4":"96908","5":"96962","6":"12762","7":"9200","8":"9637","9":"11012"},{"1":"TO","2":"PastureB","3":"Map","4":"151998","5":"153412","6":"4818","7":"1336","8":"1339","9":"1820"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
-  </script>
-</div>
-
+    ## # A tibble: 9 x 9
+    ## # Groups:   state, classification [9]
+    ##   state classification source area_mn area_md area_sd int_mn int_md int_max
+    ##   <chr> <chr>          <chr>    <dbl>   <dbl>   <dbl>  <dbl>  <dbl>   <dbl>
+    ## 1 BA    PastureB       Map     270288  268962    4463    855    969    1176
+    ## 2 GO    PastureB       Map     254365  258388    8033   2682   2570    3452
+    ## 3 MG    PastureB       Map     439921  440700   10097   1248   1304    1717
+    ## 4 MS    PastureB       Map     272122  278512   12536   3089   3020    3748
+    ## 5 MT    PastureB       Map     277010  279212   12954   3741   3811    5218
+    ## 6 PR    PastureB       Map      63408   63625    9487   4767   4583    7144
+    ## 7 RS    PastureB       Map     116060  118000   11596   3313   3618    4876
+    ## 8 SP    PastureB       Map     124604  121625   25823   7282   7313    8967
+    ## 9 TO    PastureB       Map     124700  126025    7028   1725   1836    2131
 
 Or, mean of maxima (without SC) is ~4,500
 
-
-```r
+``` r
 meat_summary %>%
   filter(source == "Map" & classification == "PastureB") %>%
   dplyr::select(-starts_with("prod"), -int_sd, -int_se) %>%
@@ -614,75 +569,67 @@ meat_summary %>%
   summarise_at(vars(int_max), mean)
 ```
 
-<div data-pagedtable="false">
-  <script data-pagedtable-source type="application/json">
-{"columns":[{"label":["classification"],"name":[1],"type":["chr"],"align":["left"]},{"label":["int_max"],"name":[2],"type":["dbl"],"align":["right"]}],"data":[{"1":"PastureB","2":"4540.111"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
-  </script>
-</div>
+    ## # A tibble: 1 x 2
+    ##   classification int_max
+    ##   <chr>            <dbl>
+    ## 1 PastureB         4270.
 
-Values for _PastureB_ seem reasonable and align well with expected future yields (important to have a max contemporary yield that is feasible in future, to be able to run the model into the future). For example, [this report](http://csr.ufmg.br/pecuaria/portfolio-item/cenarios-para-o-brasil/). All in Portuguese, but the tables and figures is not hard to understand expects yields of 8,730kg/km2 in 2030 if the Brazilian sector continues to modernize (in "Produção de @/hectare" @ is equivalent to 15kg). This potential aligns well with the median intensity of 9,100kg/km2.
+Values for *PastureB* seem reasonable and align well with expected future yields (important to have a max contemporary yield that is feasible in future, to be able to run the model into the future). For example, [this report](http://csr.ufmg.br/pecuaria/portfolio-item/cenarios-para-o-brasil/). All in Portuguese, but the tables and figures is not hard to understand expects yields of 8,730kg/km2 in 2030 if the Brazilian sector continues to modernize (in "Produção de @/hectare" @ is equivalent to 15kg). This potential aligns well with the median intensity of 9,100kg/km2.
 
 However, given that we want some indication of 'perfect', and to allow room for scenarios of extraordinary continued yield improvement) we will use the higher value of 11,000 kg/sq km as 'perfect' when calibrating (the maximum of all states bar SC in PastureB land cover re-classification)
 
-In turn, 11,000 kg/sq km == **0.275 gg/25sq km**  We will use this value as a single unit of of 'Pasture service' from CRAFTY. 
+In turn, 11,000 kg/sq km == **0.275 gg/25sq km** We will use this value as a single unit of of 'Pasture service' from CRAFTY.
 
 Full meat summary data table for reference:
 
-
-```r
+``` r
 kable(arrange(meat_summary, desc(int_mn), state, classification), caption="Meat data, sorted on mean production values descending")
 ```
 
+| state | classification | source |  area\_mn|  area\_md|  area\_sd|    prod\_mn|    prod\_md|   prod\_sd|  int\_mn|  int\_md|  int\_max|  int\_sd|  int\_se|
+|:------|:---------------|:-------|---------:|---------:|---------:|-----------:|-----------:|----------:|--------:|--------:|---------:|--------:|--------:|
+| SP    | PastureB       | Map    |    124604|    121625|     25823|   880816960|   870950541|   91210533|     7282|     7313|      8967|     1205|   66.945|
+| SP    | PastureC       | Map    |    127232|    124388|     26322|   880816960|   870950541|   91210533|     7132|     7133|      8811|     1181|   65.594|
+| PR    | PastureB       | Map    |     63408|     63625|      9487|   291649500|   297667138|   42711475|     4767|     4583|      7144|     1249|   69.387|
+| PR    | PastureC       | Map    |     65007|     64538|     10145|   291649500|   297667138|   42711475|     4661|     4485|      7022|     1244|   69.100|
+| SC    | PastureB       | Map    |     18619|     17850|      2943|    79782379|    83685623|   21767455|     4536|     4784|      7525|     1762|   97.871|
+| SC    | PastureC       | Map    |     20010|     19150|      3722|    79782379|    83685623|   21767455|     4286|     4509|      7449|     1768|   98.217|
+| MT    | PastureB       | Map    |    277010|    279212|     12954|  1042707556|  1084011426|  269548255|     3741|     3811|      5218|      902|   50.090|
+| MT    | PastureC       | Map    |    277010|    279212|     12954|  1042707556|  1084011426|  269548255|     3741|     3811|      5218|      902|   50.090|
+| RS    | PastureB       | Map    |    116060|    118000|     11596|   375753478|   413311373|   72199590|     3313|     3618|      4876|      872|   48.434|
+| RS    | PastureC       | Map    |    117586|    119550|     12276|   375753478|   413311373|   72199590|     3275|     3569|      4856|      874|   48.581|
+| MS    | PastureB       | Map    |    272122|    278512|     12536|   837499993|   831817738|   71456659|     3089|     3020|      3748|      350|   19.462|
+| MS    | PastureC       | Map    |    272568|    278812|     12435|   837499993|   831817738|   71456659|     3084|     3015|      3740|      349|   19.366|
+| GO    | PastureB       | Map    |    254365|    258388|      8033|   678720004|   665431408|  118974231|     2682|     2570|      3452|      540|   29.974|
+| GO    | PastureC       | Map    |    254722|    258850|      8000|   678720004|   665431408|  118974231|     2678|     2566|      3444|      538|   29.889|
+| TO    | PastureB       | Map    |    124700|    126025|      7028|   217005322|   239460070|   51372875|     1725|     1836|      2131|      345|   19.156|
+| TO    | PastureC       | Map    |    124700|    126025|      7028|   217005322|   239460070|   51372875|     1725|     1836|      2131|      345|   19.156|
+| MG    | PastureB       | Map    |    439921|    440700|     10097|   546551458|   578287703|  135752793|     1248|     1304|      1717|      328|   18.240|
+| MG    | PastureC       | Map    |    441279|    441912|      9930|   546551458|   578287703|  135752793|     1244|     1301|      1711|      327|   18.160|
+| BA    | PastureB       | Map    |    270288|    268962|      4463|   230127563|   258599738|   73385323|      855|      969|      1176|      280|   15.550|
+| BA    | PastureC       | Map    |    270524|    269225|      4544|   230127563|   258599738|   73385323|      855|      968|      1176|      280|   15.546|
+| SP    | PastureB       | MB     |   8827390|   8481704|   1644597|   880816960|   870950541|   91210533|      102|      105|       119|       15|    0.830|
+| SP    | PastureC       | MB     |  11447193|  11062556|   1680333|   880816960|   870950541|   91210533|       78|       80|        89|        9|    0.512|
+| PR    | PastureB       | MB     |   4904163|   4958211|    750851|   291649500|   297667138|   42711475|       62|       59|        90|       16|    0.900|
+| SC    | PastureB       | MB     |   1900454|   1791137|    246810|    79782379|    83685623|   21767455|       44|       47|        66|       16|    0.875|
+| RS    | PastureB       | MB     |   9035611|   9040966|    734173|   375753478|   413311373|   72199590|       42|       47|        60|       10|    0.581|
+| MS    | PastureB       | MB     |  20630261|  21092922|    943553|   837499993|   831817738|   71456659|       41|       40|        49|        5|    0.255|
+| PR    | PastureC       | MB     |   7216528|   7025104|    773046|   291649500|   297667138|   42711475|       41|       41|        57|        9|    0.513|
+| MS    | PastureC       | MB     |  21145638|  21581702|    889498|   837499993|   831817738|   71456659|       40|       39|        48|        4|    0.244|
+| MT    | PastureB       | MB     |  26779247|  26734096|    832469|  1042707556|  1084011426|  269548255|       39|       40|        55|       10|    0.547|
+| MT    | PastureC       | MB     |  26779247|  26734096|    832469|  1042707556|  1084011426|  269548255|       39|       40|        55|       10|    0.547|
+| GO    | PastureB       | MB     |  18686733|  19007282|    706595|   678720004|   665431408|  118974231|       37|       35|        47|        8|    0.422|
+| RS    | PastureC       | MB     |  10342832|  10415130|    768674|   375753478|   413311373|   72199590|       37|       41|        52|        9|    0.499|
+| GO    | PastureC       | MB     |  18837064|  19157955|    712235|   678720004|   665431408|  118974231|       36|       35|        47|        8|    0.418|
+| SC    | PastureC       | MB     |   2985353|   2891796|    274491|    79782379|    83685623|   21767455|       28|       29|        42|        9|    0.522|
+| MG    | PastureB       | MB     |  31478404|  31521990|   1301009|   546551458|   578287703|  135752793|       18|       18|        24|        5|    0.270|
+| TO    | PastureB       | MB     |  13076418|  13156970|    278390|   217005322|   239460070|   51372875|       17|       18|        21|        4|    0.206|
+| TO    | PastureC       | MB     |  13076418|  13156970|    278390|   217005322|   239460070|   51372875|       17|       18|        21|        4|    0.206|
+| MG    | PastureC       | MB     |  35498745|  35451756|    945303|   546551458|   578287703|  135752793|       15|       16|        21|        4|    0.229|
+| BA    | PastureB       | MB     |  25376665|  25280897|    324012|   230127563|   258599738|   73385323|        9|       10|        12|        3|    0.164|
+| BA    | PastureC       | MB     |  26801678|  26723792|    287172|   230127563|   258599738|   73385323|        9|       10|        12|        3|    0.155|
 
-
-Table: Meat data, sorted on mean production values descending
-
-state   classification   source    area_mn   area_md   area_sd     prod_mn      prod_md     prod_sd   int_mn   int_md   int_max   int_sd     int_se
-------  ---------------  -------  --------  --------  --------  ----------  -----------  ----------  -------  -------  --------  -------  ---------
-SC      PastureA         Map          3144      2175      2656    74131260     73967400    21868077    33072    31647     69329    18435   1152.179
-SC      PastureA         MB           6009      4734      3375    74131260     73967400    21868077    14079    12221     28532     5689    355.539
-RS      PastureA         Map         27769     27562      5014   359173016    383339288    72758858    13197    12254     18091     3099    193.717
-SP      PastureA         MB          72811     72982      8244   878686400    885858229   119385323    12191    12844     14264     1883    117.663
-SP      PastureB         MB          72872     73064      8246   878686400    885858229   119385323    12181    12834     14254     1881    117.584
-RS      PastureA         MB          35380     35848      3905   359173016    383339288    72758858    10197    10047     13103     2099    131.188
-SC      PastureB         Map          8431      7325      2603    74131260     73967400    21868077     9245     7849     16891     3373    210.792
-SP      PastureA         Map         96892     96938     12772   878686400    885858229   119385323     9202     9637     11016     1534     95.869
-SP      PastureB         Map         96908     96962     12762   878686400    885858229   119385323     9200     9637     11012     1533     95.801
-SC      PastureB         MB          10558      9354      3361    74131260     73967400    21868077     7345     6239     14050     2613    163.312
-PR      PastureA         MB          38772     39042      2489   280084706    288614877    49929771     7306     7776      9448     1599     99.965
-PR      PastureB         MB          38773     39043      2489   280084706    288614877    49929771     7306     7776      9448     1599     99.964
-MS      PastureA         MB         140393    140576      4251   833020798    816012972    77083654     5938     5787      7200      578     36.142
-PR      PastureA         Map         48111     48988      2616   280084706    288614877    49929771     5867     6187      7566     1222     76.394
-PR      PastureB         Map         48111     48988      2616   280084706    288614877    49929771     5867     6187      7566     1222     76.394
-MT      PastureA         MB         183946    188248     15110   958318285   1020597324   289662995     5125     5427      7355     1248     78.018
-GO      PastureA         MB         138150    139554      4854   643774060    655177836   123381231     4644     4631      6013      797     49.808
-MS      PastureB         MB         183896    184818      5083   833020798    816012972    77083654     4530     4436      5409      404     25.220
-MT      PastureA         Map        216455    221850     18345   958318285   1020597324   289662995     4353     4600      6209     1048     65.507
-MS      PastureA         Map        200350    201550      5324   833020798    816012972    77083654     4159     4072      4969      378     23.611
-GO      PastureB         MB         158894    159752      5393   643774060    655177836   123381231     4039     4009      5259      707     44.183
-MT      PastureB         MB         248766    254522     16432   958318285   1020597324   289662995     3799     4012      5531      975     60.938
-MS      PastureB         Map        237114    238938      5595   833020798    816012972    77083654     3514     3442      4206      322     20.148
-MT      PastureB         Map        275080    281712     19073   958318285   1020597324   289662995     3433     3627      4967      871     54.410
-TO      PastureA         MB          62120     64202      4264   204120756    208454298    57704451     3242     3250      4229      755     47.167
-RS      PastureB         MB         114163    114683      6112   359173016    383339288    72758858     3159     3288      3979      690     43.123
-GO      PastureA         Map        205253    208900      8725   643774060    655177836   123381231     3122     3112      4020      511     31.908
-GO      PastureB         Map        220059    223062      9109   643774060    655177836   123381231     2913     2893      3764      484     30.266
-MG      PastureA         MB         185439    186648      8655   508972814    555300819   154613474     2754     3034      3881      828     51.729
-TO      PastureA         Map         74369     76375      6235   204120756    208454298    57704451     2703     2721      3427      594     37.131
-RS      PastureB         Map        141067    140112      7721   359173016    383339288    72758858     2560     2662      3240      570     35.650
-MG      PastureB         MB         215311    216750      8344   508972814    555300819   154613474     2370     2602      3374      712     44.507
-MG      PastureA         Map        246389    246750     18155   508972814    555300819   154613474     2078     2306      2836      615     38.457
-MG      PastureB         Map        273078    274412     17617   508972814    555300819   154613474     1871     2070      2576      551     34.411
-TO      PastureB         MB         130148    131276      3763   204120756    208454298    57704451     1560     1572      2127      420     26.264
-BA      PastureA         MB         139045    140580     10877   210624063    239675206    81054216     1533     1695      2248      622     38.902
-BA      PastureA         Map        145261    148025     15042   210624063    239675206    81054216     1477     1622      2283      618     38.608
-TO      PastureB         Map        151998    153412      4818   204120756    208454298    57704451     1336     1339      1820      358     22.403
-BA      PastureB         Map        185330    190238     14493   210624063    239675206    81054216     1151     1272      1710      468     29.250
-BA      PastureB         MB         186961    189788     10680   210624063    239675206    81054216     1135     1262      1607      452     28.263
-
-
-
-```r
+``` r
 #if needed to remove ASCII folder
 #unlink("ASCII", recursive = T) #delete ASCII directory created above
 ```

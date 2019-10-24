@@ -1,15 +1,15 @@
 ---
 title: "MapBiomas Classification - Pasture Analysis"
 author: "James D.A. Millington"
-date: "Aug 2019"
-output: 
-  html_document: 
-    keep_md: yes
-    code_folding: hide
-    df_print: paged
+date: "Oct 2019"
+output: github_document
+#  html_document: 
+#    keep_md: yes
+#    code_folding: hide
+#    df_print: paged
 ---
 
-This script analyses pasture areas, meat production and dairy production (and intensities) for all states and years, for two different classifications of the MapBiomas data - one that includes 'Grassland' in our 'Pasture' class and one that does not. See accompanying Excel file for the classifications. Below the two data sources:
+This script analyses pasture areas, meat production and meat 'yield' (intensity) for all states and years, for two different classifications of the MapBiomas data - one that includes 'Grassland' in our 'Pasture' class and one that does not (plus disaggregation of some classes using planted area data). See accompanying Excel file for the classifications. Below the two data sources:
 
 - _MB_ is the original 30m MapBiomas data
 - _Map_ is our aggregated 5km map data
@@ -79,13 +79,13 @@ getLCs <- function(data)
 
 ```{r results='hide', warning=F, messages=F}
 
-unzip(zipfile="Data/MapBiomas_23_ASCII_unclassified_allYears.zip")  # unzip all files 
+#unzip(zipfile="Data/MapBiomas_23_ASCII_unclassified_allYears.zip")  # unzip all files 
 
 #for 'suppressMessages' see https://stackoverflow.com/a/41229387
-mb_data <- suppressMessages(read_csv("Data/LandCover Data - MapBiomas - Collection 2.3 - 2018.01.04 Municipios.csv"))
+mb_data <- suppressMessages(read_csv("Data/Dados_Cobertura_MapBiomas_4.0_LAND_COVER-MUN_UF.csv"))
 
-unzip(zipfile="Data/sim10_BRmunis_latlon_5km_2018-04-27.zip",files="sim10_BRmunis_latlon_5km_2018-04-27.asc",exdir="ASCII")  # unzip file 
-munis.r <- raster("Data/sim10_BRmunis_latlon_5km_2018-04-27.asc")  #do this with zip file
+#unzip(zipfile="Data/sim10_BRmunis_latlon_5km_2018-04-27.zip",files="sim10_BRmunis_latlon_5km_2018-04-27.asc",exdir="ASCII")  # unzip file 
+munis.r <- raster("Data/BaseMaps/sim10_BRmunis_latlon_5km.asc")  
 
 #extract cell values to table format
 munis.t <- extractXYZ(munis.r, addCellID = F)
@@ -99,9 +99,9 @@ munis.t <- plyr::rename(munis.t, c("vals" = "muniID"))
 #Specify classifications and years to examine. Classifications should be the names of Sheets in the Classifications Excel file. Years should be between 2000 and 2015 
 
 #classifications to loop through 
-cls <- c("PastureA", "PastureB")
+cls <- c("PastureB", "PastureC")
 
-yrls <- seq(2000,2015,1)
+yrls <- seq(2001,2018,1)
 
 ```
 
@@ -123,10 +123,11 @@ names(Stotals_ls) <- cls
 names(SDataW_Adj_ls) <- cls
 names(mapStack_ls) <- cls
 
+
 #loop over classifications
 for(i in seq_along(cls)){
   
-  classification <- read_excel("Data/MapBiomas_CRAFTY_classifications.xlsx", sheet = cls[i], range="B2:C21", col_names=F) 
+  classification <- read_excel("Data/MapBiomas_CRAFTY_classifications_v4.xlsx", sheet = cls[i], range="B2:C28", col_names=F) 
   
   #reset mapStack for this Classification
   mapStack <- stack()
@@ -134,182 +135,180 @@ for(i in seq_along(cls)){
   #loop over years  
   for(j in seq_along(yrls)){
 
-  #print(paste0("Classification: ",cls[i],", Year: ",yrls[j]))
-  
-  map <- raster(paste0("ASCII/brazillc_",yrls[j],"_5km_int.txt"))
-  map <- reclassify(map, rcl=as.matrix(classification))
-  
-  
-  #add categories for later plotting etc. (see https://stackoverflow.com/a/37214431)
-  map <- ratify(map)     #tell R that the map raster is categorical 
-  rat <- levels(map)[[1]]    #apply the levels (i.e. categories) 
- 
-  #not all classes may be present after classification, so conditionally construct labels
-  labs <- c()
-  if(1 %in% levels(map)[[1]]$ID) { labs <- c(labs, "Nature") }
-  if(2 %in% levels(map)[[1]]$ID) { labs <- c(labs, "OtherAgri") }
-  if(3 %in% levels(map)[[1]]$ID) { labs <- c(labs, "Agriculture") }
-  if(4 %in% levels(map)[[1]]$ID) { labs <- c(labs, "Other") }
-  if(5 %in% levels(map)[[1]]$ID) { labs <- c(labs, "Pasture") }
+    #read the classfied map to a raster  
+    map <- raster(paste0("Data/Classified/LandCover",yrls[j],"_",cls[i],"_Disagg.asc"))
     
-  rat$landcover <- labs  
-  levels(map) <- rat 
-  
-  #add to mapStack for later plotting
-  mapStack <- stack(map, mapStack)
-
-  #extract cell values to table format
-  map.t <- extractXYZ(map, addCellID = F)
-  map.t <- as.data.frame(map.t)
-  map.t <- plyr::rename(map.t, c("vals" = "map"))
-
-  #so need to join 
-  map_munis <- left_join(as.data.frame(munis.t), as.data.frame(map.t), by = c("row" = "row", "col" = "col"))
-
-  #now summarise by muniID
-  lcs_map_munis <- getLCs(map_munis)
-
-  #convert cell counts to areas (km2) and add state id
-  map_areas_munis <- lcs_map_munis %>%
-    mutate(LC1area = round(LC1 * NonNAs) * 25) %>%
-    mutate(LC2area = round(LC2 * NonNAs) * 25) %>%
-    mutate(LC3area = round(LC3 * NonNAs) * 25) %>%
-    mutate(LC4area = round(LC4 * NonNAs) * 25) %>%
-    mutate(LC5area = round(LC5 * NonNAs) * 25) %>%
-    mutate(state = substr(muniID, 1, 2))
-
-  #drop original cell-count columns (work with area km2 from now on)
-  map_areas_munis <- map_areas_munis %>% dplyr::select(-LC1, -LC2, -LC3, -LC4, -LC5, -NonNAs, -NAs)
-
-  #summarise muni areas to state level
-  map_areas <- map_areas_munis %>%
-    group_by(state) %>%
-    dplyr::summarise_at(vars(LC1area:LC5area),sum, na.rm=T) %>%  #use _at so state is not summarised
-    mutate_if(is.character, as.integer)
-
-  #gather to long format for union below
-  map_areas <- map_areas %>%
-    gather(key = LCa, value = area, -state)
-  
-  #recode LCs for union below
-  map_areas <- map_areas %>%
-    mutate(LC = if_else(LCa == "LC1area", 1, 
-      if_else(LCa == "LC2area", 2,
-      if_else(LCa == "LC3area", 3,
-      if_else(LCa == "LC4area", 4,
-      if_else(LCa == "LC5area", 5, 0)
-      )))))
-
-  #add source variable for plotting below (re-order to match map table for union below)
-  map_areas <- map_areas %>%
-    dplyr::select(-LCa) %>%
-    mutate(source = "Map") %>%
-    dplyr::select(state, LC, source, area)
-
-  ###Summarise MapBiomas data to the states we are simulating
-
-  #filter to get only the states we want
-  mb_areas <- mb_data %>%
-    filter(Estados == "TOCANTINS" | 
-        Estados == "BAHIA" |
-        Estados == "MINAS GERAIS" |
-        Estados == "SÃO PAULO" |
-        Estados == "PARANÁ" |
-        Estados == "SANTA CATARINA" |
-        Estados == "RIO GRANDE DO SUL" |
-        Estados == "MATO GROSSO DO SUL" |
-        Estados == "MATO GROSSO" |
-        Estados == "GOIÁS")
-  
-  #add state column containing state ids
-  mb_areas <- mb_areas %>%
-    mutate(state = if_else(Estados == "TOCANTINS", 17, 
-      if_else(Estados == "BAHIA", 29,
-      if_else(Estados == "MINAS GERAIS", 31,
-      if_else(Estados == "SÃO PAULO", 35,
-      if_else(Estados == "PARANÁ", 41,
-      if_else(Estados == "SANTA CATARINA", 42,
-      if_else(Estados == "RIO GRANDE DO SUL", 43, 
-      if_else(Estados == "MATO GROSSO DO SUL", 50, 
-      if_else(Estados == "MATO GROSSO", 51,
-      if_else(Estados == "GOIÁS", 52, 0
-      ))))))))))
-    )
-  
+    #add categories for later plotting etc. (see https://stackoverflow.com/a/37214431)
+    map <- ratify(map)     #tell R that the map raster is categorical 
+    rat <- levels(map)[[1]]    #apply the levels (i.e. categories) 
+   
+    #not all classes may be present after classification, so conditionally construct labels
+    labs <- c()
+    if(1 %in% levels(map)[[1]]$ID) { labs <- c(labs, "Nature") }
+    if(2 %in% levels(map)[[1]]$ID) { labs <- c(labs, "OtherAgri") }
+    if(3 %in% levels(map)[[1]]$ID) { labs <- c(labs, "Agriculture") }
+    if(4 %in% levels(map)[[1]]$ID) { labs <- c(labs, "Other") }
+    if(5 %in% levels(map)[[1]]$ID) { labs <- c(labs, "Pasture") }
       
-  #select only columns we want    
-  mb_areas <- mb_areas %>%
-    dplyr::select(state, paste0(yrls[j]), `Classe Nivel 3`) %>% 
-    dplyr::rename(area = paste0(yrls[j]))
-  
-  #because there is no consistency between land cover labels
-  legenda = c("Forest Formations"=1, "Natural Forest Formations"=2, "Dense Forest"=3, "Savanna Formations"=4, "Mangroves"=5,"Forest Plantations"=9, "Non-Forest Natural Formations"=10, "Non Forest Wetlands"=11, "Grasslands"=12, "Other Non Forest Natural Formations"=13, "Farming"=14, "Pasture"=15, "Agriculture"=18, "Agriculture or Pasture"=21, "Non-Vegetated Areas"=22, "Dunes and Beaches"=23, "Urban Infrastructure"=24,"Other Non-Vegetated Area"=25,"Water Bodies"=26, "Non-Observed"=27)
-  
-  #recode to values (which match the map)
-  mb_areas <- mb_areas %>%
-    mutate(LC = recode(`Classe Nivel 3`, !!!legenda))
-  
-  #use the classification values from above to relassify land covers
-  mb_areas$LC <- plyr::mapvalues(mb_areas$LC, from=as.numeric(classification$X__1), to=as.numeric(classification$X__2))
-  
-  #calculate total LC area by state
-  mb_areas <- mb_areas %>%
-    group_by(state, LC) %>%
-    dplyr::summarise_at(vars(area),sum, na.rm=T) 
-  
-  #round to integer
-  mb_areas <- mb_areas %>%
-    mutate(area_km2 = round(area,0))
-  
-  #add source variable for plotting below (re-order to match map table for union below)
-  mb_areas <- mb_areas %>%
-    dplyr::select(-area) %>%
-    mutate(source = "MB") %>%
-    rename(area = area_km2) %>%
-    dplyr::select(state, LC, source, area)
+    rat$landcover <- labs  
+    levels(map) <- rat 
     
-
-  CData_yr <- union_all(map_areas, mb_areas)
-
-  #relabel states to characters
-  CData_yr <- CData_yr %>%
-    mutate(state = if_else(state == 17, "TO", 
-      if_else(state == 29, "BA",
-      if_else(state == 31, "MG",
-      if_else(state == 35, "SP",
-      if_else(state == 41, "PR",
-      if_else(state == 42, "SC",
-      if_else(state == 43, "RS", 
-      if_else(state == 50, "MS",
-      if_else(state == 51, "MT",
-      if_else(state == 52, "GO", "NA"
-      ))))))))))
-    )
+    #add to mapStack for later plotting
+    mapStack <- stack(map, mapStack)
   
-  #relabel LCs to characters
-  CData_yr <- CData_yr %>%
-    mutate(LC = if_else(LC == 1, "Nature", 
-      if_else(LC == 2, "OtherAgri",
-      if_else(LC == 3, "Agri",
-      if_else(LC == 4, "Other",
-      if_else(LC == 5, "Pasture", "NA"
-      )))))
-    )
+    #extract cell values to table format
+    map.t <- extractXYZ(map, addCellID = F)
+    map.t <- as.data.frame(map.t)
+    map.t <- plyr::rename(map.t, c("vals" = "map"))
   
-  #add year column
-  CData_yr <- CData_yr %>%
-    mutate(year = yrls[j])
+    #so need to join 
+    map_munis <- left_join(as.data.frame(munis.t), as.data.frame(map.t), by = c("row" = "row", "col" = "col"))
   
-  #union CData for years here.
-  #if first iteration of classification loop (re)create the tibble
-  if(j == 1){
-      CData <- CData_yr
-  }
+    #now summarise by muniID
+    lcs_map_munis <- getLCs(map_munis)
+  
+    #convert cell counts to areas (km2) and add state id
+    map_areas_munis <- lcs_map_munis %>%
+      mutate(LC1area = round(LC1 * NonNAs) * 25) %>%
+      mutate(LC2area = round(LC2 * NonNAs) * 25) %>%
+      mutate(LC3area = round(LC3 * NonNAs) * 25) %>%
+      mutate(LC4area = round(LC4 * NonNAs) * 25) %>%
+      mutate(LC5area = round(LC5 * NonNAs) * 25) %>%
+      mutate(state = substr(muniID, 1, 2))
+  
+    #drop original cell-count columns (work with area km2 from now on)
+    map_areas_munis <- map_areas_munis %>% dplyr::select(-LC1, -LC2, -LC3, -LC4, -LC5, -NonNAs, -NAs)
+  
+    #summarise muni areas to state level
+    map_areas <- map_areas_munis %>%
+      group_by(state) %>%
+      dplyr::summarise_at(vars(LC1area:LC5area),sum, na.rm=T) %>%  #use _at so state is not summarised
+      mutate_if(is.character, as.integer)
+  
+    #gather to long format for union below
+    map_areas <- map_areas %>%
+      gather(key = LCa, value = area, -state)
     
-  #else join data to tibble (by creating another tibble, then join (ensure rows are not lost)
-  else {
-      CData <- union_all(CData, CData_yr)
-  }
+    #recode LCs for union below
+    map_areas <- map_areas %>%
+      mutate(LC = if_else(LCa == "LC1area", 1, 
+        if_else(LCa == "LC2area", 2,
+        if_else(LCa == "LC3area", 3,
+        if_else(LCa == "LC4area", 4,
+        if_else(LCa == "LC5area", 5, 0)
+        )))))
+  
+    #add source variable for plotting below (re-order to match map table for union below)
+    map_areas <- map_areas %>%
+      dplyr::select(-LCa) %>%
+      mutate(source = "Map") %>%
+      dplyr::select(state, LC, source, area)
+  
+    ###Summarise MapBiomas data to the states we are simulating
+  
+    #filter to get only the states we want
+    mb_areas <- mb_data %>%
+      filter(estado == "TOCANTINS" | 
+          estado == "BAHIA" |
+          estado == "MINAS GERAIS" |
+          estado == "SÃO PAULO" |
+          estado == "PARANÁ" |
+          estado == "SANTA CATARINA" |
+          estado == "RIO GRANDE DO SUL" |
+          estado == "MATO GROSSO DO SUL" |
+          estado == "MATO GROSSO" |
+          estado == "GOIÁS")
+    
+    #add state column containing state ids
+    #mb_areas <- mb_areas %>%
+    #  mutate(state = if_else(Estados == "TOCANTINS", 17, 
+    #    if_else(Estados == "BAHIA", 29,
+    #    if_else(Estados == "MINAS GERAIS", 31,
+    #    if_else(Estados == "SÃO PAULO", 35,
+    #    if_else(Estados == "PARANÁ", 41,
+    #    if_else(Estados == "SANTA CATARINA", 42,
+    #    if_else(Estados == "RIO GRANDE DO SUL", 43, 
+    #    if_else(Estados == "MATO GROSSO DO SUL", 50, 
+    #    if_else(Estados == "MATO GROSSO", 51,
+    #    if_else(Estados == "GOIÁS", 52, 0
+    #    ))))))))))
+    #  )
+    
+        
+    #select only columns we want    
+    mb_areas <- mb_areas %>%
+      dplyr::rename(state = COD_ESTADO) %>%
+      dplyr::select(state, paste0(yrls[j]), `cod.classe`) %>% 
+      dplyr::rename(area = paste0(yrls[j])) %>%
+      dplyr::rename(LC = `cod.classe`) 
+      
+    
+    #because there is no consistency between land cover labels
+   # legenda = c("Forest Formations"=1, "Natural Forest Formations"=2, "Dense Forest"=3, "Savanna Formations"=4, "Mangroves"=5,"Forest Plantations"=9, "Non-Forest Natural Formations"=10, "Non Forest Wetlands"=11, "Grasslands"=12, "Other Non Forest Natural Formations"=13, "Farming"=14, "Pasture"=15, "Agriculture"=18, "Agriculture or Pasture"=21, "Non-Vegetated Areas"=22, "Dunes and Beaches"=23, "Urban Infrastructure"=24,"Other Non-Vegetated Area"=25,"Water Bodies"=26, "Non-Observed"=27)
+    
+    #recode to values (which match the map)
+    #mb_areas <- mb_areas %>%
+    #  mutate(LC = recode(`Classe Nivel 3`, !!!legenda))
+    
+    #use the classification values from above to relassify land covers
+    mb_areas$LC <- plyr::mapvalues(mb_areas$LC, from=as.numeric(classification$X__1), to=as.numeric(classification$X__2))
+    
+    #calculate total LC area by state
+    mb_areas <- mb_areas %>%
+      group_by(state, LC) %>%
+      dplyr::summarise_at(vars(area),sum, na.rm=T) 
+    
+    #round to integer
+    mb_areas <- mb_areas %>%
+      mutate(area_km2 = round(area,0))
+    
+    #add source variable for plotting below (re-order to match map table for union below)
+    mb_areas <- mb_areas %>%
+      dplyr::select(-area) %>%
+      mutate(source = "MB") %>%
+      rename(area = area_km2) %>%
+      dplyr::select(state, LC, source, area)
+      
+  
+    CData_yr <- union_all(map_areas, mb_areas)
+  
+    #relabel states to characters
+    CData_yr <- CData_yr %>%
+      mutate(state = if_else(state == 17, "TO", 
+        if_else(state == 29, "BA",
+        if_else(state == 31, "MG",
+        if_else(state == 35, "SP",
+        if_else(state == 41, "PR",
+        if_else(state == 42, "SC",
+        if_else(state == 43, "RS", 
+        if_else(state == 50, "MS",
+        if_else(state == 51, "MT",
+        if_else(state == 52, "GO", "NA"
+        ))))))))))
+      )
+    
+    #relabel LCs to characters
+    CData_yr <- CData_yr %>%
+      mutate(LC = if_else(LC == 1, "Nature", 
+        if_else(LC == 2, "OtherAgri",
+        if_else(LC == 3, "Agri",
+        if_else(LC == 4, "Other",
+        if_else(LC == 5, "Pasture", "NA"
+        )))))
+      )
+    
+    #add year column
+    CData_yr <- CData_yr %>%
+      mutate(year = yrls[j])
+    
+    #union CData for years here.
+    #if first iteration of classification loop (re)create the tibble
+    if(j == 1){
+        CData <- CData_yr
+    } else {
+        #else join data to tibble (by creating another tibble, then join (ensure rows are not lost)
+        CData <- union_all(CData, CData_yr)
+    }
   }
   
   CData_ls[[i]] <- CData
@@ -321,7 +320,7 @@ for(i in seq_along(cls)){
 ```
 
 #Maps
-For 2000 for the different classifications (for quick visual comparison)
+For 2001 for the different classifications (for quick visual comparison)
 ```{r fig.width=12, warning=F, message=F}
 for(i in seq_along(mapStack_ls)){
   
@@ -334,7 +333,7 @@ for(i in seq_along(mapStack_ls)){
   
   print(cls[i])
 
-  print(rasterVis::levelplot(mapStack_ls[[i]]$X2000, pretty=T,att = 'landcover', col.regions=clabs, main=paste0(cls[[i]], " 2000")))
+  print(rasterVis::levelplot(mapStack_ls[[i]]$X2001, pretty=T,att = 'landcover', col.regions=clabs, main=paste0(cls[[i]], " 2001")))
   
 }
 
@@ -395,7 +394,7 @@ CData_Pas %>%
 
 ```{r warning=F, message=F}
 #Load Production Data
-meat_prod_Astates <- read_excel("Data/Cattle_meat_production_Kg_2000_2017_all_states.xlsx", sheet = "Plan1", skip = 1)  #data for all states Astates
+meat_prod_Astates <- read_excel("Data/Cattle_meat_production_Kg_2001_2018_all_states.xlsx", sheet = "Plan1", skip = 1)  #data for all states Astates
 
 ```
 
@@ -404,9 +403,9 @@ meat_prod_Astates <- read_excel("Data/Cattle_meat_production_Kg_2000_2017_all_st
 #tidy meat data
 meat_prod_Astates %>%
   rename(state = NM_UF_SIGLA) %>%
-  dplyr::select(-NM_UF, -CD_GCUF, -`2016`, -`2017`) %>%      #drop columns
+  dplyr::select(-NM_UF, -CD_GCUF) %>%      #drop columns
   filter(!is.na(state)) %>%   #safer way to remove text line at bottom of state column
-  mutate_at(vars("2000":"2015"), as.numeric) -> meat_prod_Astates
+  mutate_at(vars("2001":"2018"), as.numeric) -> meat_prod_Astates
 
 Fstate_vals <- c(17,	29,	31,	35,	41,	42,	43,	50,	51,	52)
 Fstate_abbrev <- c("TO", "BA", "MG", "SP", "PR",  "SC", "RS", "MS", "MT", "GO")
