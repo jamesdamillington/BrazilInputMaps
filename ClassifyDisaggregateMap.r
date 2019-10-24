@@ -12,11 +12,11 @@ library(readxl)
 input_path <- "C:/Users/k1076631/Google Drive/Shared/Crafty Telecoupling/Data/LandCover/MapBiomas4/BrazilInputMaps/"
 
 #Classification from Excel
-cname <- "PastureB"
-classification <- read_excel(paste0(input_path,"Data/MapBiomas_CRAFTY_classifications.xlsx"), sheet = cname, range="B2:C21", col_names=F)  
+cname <- "PastureC"
+classification <- read_excel(paste0(input_path,"Data/MapBiomas_CRAFTY_classifications_v4.xlsx"), sheet = cname, range="B2:C28", col_names=F)  
 
 #classify for the following years
-yrs <- seq(2001, 2015, 1)   
+yrs <- seq(2001, 2018, 1)   
 
 #map for our study area, cell values are municipality IDs
 munis.r <- raster(paste0(input_path,"Data/BaseMaps/sim10_BRmunis_latlon_5km.asc")) 
@@ -578,6 +578,3 @@ if(disaggregate){
   }
 }
 
-
-unlink("Data/ASCII", recursive = T) #delete ASCII directory created above
-unlink("Data/PlantedAreas", recursive = T) #delete PlantedAreas directory created above
