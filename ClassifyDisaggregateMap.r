@@ -9,29 +9,46 @@ library(readxl)
 
 ################
 ##Script settings
-
-input_path <- "C:/Users/k1076631/Google Drive/Shared/Crafty Telecoupling/Data/LandCover/MapBiomas23/BrazilInputMaps/"
-
-#unzip data as needed 
-unzip(zipfile=paste0(input_path,"Data/MapBiomas_23_ASCII_unclassified_allYears.zip"),exdir="Data")  #mosaicked and resampled to 5km
-unzip(zipfile=paste0(input_path,"Data/PlantedArea_IBGE.zip"),exdir=paste0(input_path,"Data/PlantedAreas"))  #planted area data compiled from IBGE tables
+input_path <- "C:/Users/k1076631/Google Drive/Shared/Crafty Telecoupling/Data/LandCover/MapBiomas4/BrazilInputMaps/"
 
 #Classification from Excel
-classification <- read_excel(paste0(input_path,"Data/MapBiomas_CRAFTY_classifications.xlsx"), sheet = "PastureB", range="B2:C21", col_names=F)  
 cname <- "PastureB"
+classification <- read_excel(paste0(input_path,"Data/MapBiomas_CRAFTY_classifications.xlsx"), sheet = cname, range="B2:C21", col_names=F)  
 
 #classify for the following years
 yrs <- seq(2001, 2015, 1)   
 
 #map for our study area, cell values are municipality IDs
-munis.r <- raster(paste0(input_path,"Data/sim10_BRmunis_latlon_5km_2018-04-27.asc")) 
+munis.r <- raster(paste0(input_path,"Data/BaseMaps/sim10_BRmunis_latlon_5km.asc")) 
 
-#indicate whether to create summary tables or not
+#indicate whether to improve classification by disaggregating some classes using planted area data
+disaggregate <- T
+
+#indicate whether to create summary tables or not (these are needed for disaggregation but take some time to create so pre-created might be used)
 sumTab <- T
 
 
 ################
-##Functions 
+##Classify 
+
+if(!dir.exists(paste0(input_path,"Data/Classified"))){
+  dir.create(paste0(input_path,"Data/Classified"))
+}
+
+
+for(yr in seq_along(yrs)){
+  
+  map <- raster(paste0(input_path,"Data/Unclassified/Brazil_",yrs[yr],"_5km.asc"))  #read pre-classified data
+  map <- reclassify(map, rcl=as.matrix(classification))                 #classify
+  writeRaster(map, paste0(input_path,"Data/Classified/LandCover",yrs[yr],"_",cname,".asc"), format = 'ascii', overwrite=T)  #output
+}
+
+
+
+
+
+################
+##Functions for disagregation
 
 #function converts raster to xyz  (with help from https://stackoverflow.com/a/19847419)
 #specify input raster, whether nodata cells should be output, whether a unique cell ID should be added
@@ -402,177 +419,164 @@ createSummaryTables <- function(munisMap, yrs){
 
 
 
-################
-##Classify 
-
-if(!dir.exists(paste0(input_path,"Data/Classified"))){
-  dir.create(paste0(input_path,"Data/Classified"))
-}
-
-
-for(yr in seq_along(yrs)){
-  
-  map <- raster(paste0(input_path,"Data/ASCII/brazillc_",yrs[yr],"_5km_int.txt"))  #read pre-classified data
-  map <- reclassify(map, rcl=as.matrix(classification))                 #classify
-  writeRaster(map, paste0(input_path,"Data/Classified/LandCover",yrs[yr],"_",cname,".asc"), format = 'ascii', overwrite=T)  #output
-}
-
 
 
 ################
 ##Disaggregate 
 
-#may need to create summary tables of pre-classified maps first 
-if(sumTab){
-  createSummaryTables(munis.r, yrs)
-}
+if(disaggregate){
 
-
-#loop through years disaggregating
-for(yr in seq_along(yrs)){
-
-  #yr <- 1 #for testing
-  
-  print(paste0("Disaggregating, year: ", yrs[yr]))
-
-  #read Summary table for this year - this contains number of cells in each muni (and proportions in each LC)
-  mapped <- read_csv(paste0(input_path,"Data/Classified/SummaryTable",yrs[yr],"_",cname,".csv"))
-  
-  # From mapbiomas data calculate number of cells for:
-  # - agriculture
-  # - OAgri
-  mapped <- mapped %>%
-    mutate(A_mapped_cells = round(LC3 * NonNAs,0)) %>%
-    mutate(OA_mapped_cells = round(LC2 * NonNAs,0))
-  
-  
-  #muni 5006275 was only created in 2013, partitioned from 5000203
-  #so add values from 5006275 to 5000203
-  old <- mapped$A_mapped_cells[mapped$muniID == 5000203]
-  new <- mapped$A_mapped_cells[mapped$muniID == 5006275] + old
-  mapped$A_mapped_cells[mapped$muniID == 5000203] <- new
-  
-  old <- mapped$OA_mapped_cells[mapped$muniID == 5000203]
-  new <- mapped$OA_mapped_cells[mapped$muniID == 5006275] + old
-  mapped$OA_mapped_cells[mapped$muniID == 5000203] <- new 
-  
-  #mapped %>%
-  #  filter(A_mapped_cells > 0) %>%
-  #  ggplot(aes(x = A_mapped_cells)) +
-  #  geom_histogram(binwidth=5)
-    
-  
-  #read planted area data (from IBGE)
-  planted <- read_excel(paste0(input_path,"Data/PlantedAreas/PlantedArea_",yrs[yr],".xlsx"), sheet = paste0(yrs[yr]), col_names=T)  
-  #  planted <- read_csv("Data/ObservedLCmaps/PlantedArea_2000-2003.csv")
-  
-  # #From planted area data calculate number of cells for:
-  # - Soybean + Maize  [A_plant]
-  # - Cotton + Rice + Sugar_Cane + Bean + Sorghum + Wheat [OA_plant]
-  
-  #no data for first_crop maize in 2001 and 2002 so use 2003 data
-  if(yrs[yr] == 2001 | yrs[yr] == 2002) {
-    planted <- planted %>%
-      mutate(A_plant_ha = first_crop_2003 + soybean)
-  } else {
-    planted <- planted %>%
-      mutate(A_plant_ha = first_crop + soybean) 
+  #may need to create summary tables of pre-classified maps first 
+  if(sumTab){
+    createSummaryTables(munis.r, yrs)
   }
   
-  planted <- planted %>%
-    mutate(OA_plant_ha = cotton + rice + sugarcane + bean + sorghum + wheat) %>%
-    mutate(A_plant_cells = round(A_plant_ha / 2500, 0)) %>%
-    mutate(OA_plant_cells = round(OA_plant_ha / 2500, 0))  #one cell = 2500ha
-
   
-  #join the data
-  joined <- left_join(mapped, planted, by = c("muniID" = "IBGE_CODE"))
+  #loop through years disaggregating
+  for(yr in seq_along(yrs)){
   
-  #previously used to check the join 
-  #(this is where issue with muni 5006275 was discovered
-  #munis 4300001 and 4300002 are also missing, but these are large lakes with minimal agriculture
-  #missing <- joined %>% 
-  #  filter(is.na(A_plant_cells))
-  
-  #calculate differences between mapped and planted areas (in cells)
-  diffs <- calcDiffcs(joined)
-  diffs <- diffs %>% filter(!is.na(A_plant_cells))  #drop NA
-  
-  #now update map
-  #read muniID map -> get x,y,z
-  #load the rasters
-  #munis.r <- raster(munis.r)
-  lc.r <- raster(paste0(input_path,"Data/Classified/LandCover",yrs[yr],"_",cname,".asc"))
-  
-  munis.t <- extractXYZ(munis.r, addCellID = F)
-  lc.t <- extractXYZ(lc.r, addCellID = F)
-  
-  munis.t <- as.data.frame(munis.t)
-  munis.t <- plyr::rename(munis.t, c("vals" = "muniID"))
+    #yr <- 1 #for testing
     
-  lc.t <- as.data.frame(lc.t)
-  lc.t <- plyr::rename(lc.t, c("vals" = "lc"))
-   
+    print(paste0("Disaggregating, year: ", yrs[yr]))
   
-  #join observed land cover map (so have x,y,muniID,original LC
-  lc_munis <- left_join(as.data.frame(munis.t), as.data.frame(lc.t), by = c("row" = "row", "col" = "col"))
-  
-  #note: missing cells after join 
-  #lcNA <- lc_munis %>% filter(is.na(lc)) 
-  
-  #for testing
-  #this.muniID <- 4202073
-  #lcs <- filter(lc_munis, muniID == this.muniID)
-  #convs <- filter(j, muniID == this.muniID)
-  #convertLCs(convs, lcs)
-  
-  final <- data.frame() 
-
-  #for testing
-  #dummy <- c(3527603,3527603,3527504,3527504,3528205)
+    #read Summary table for this year - this contains number of cells in each muni (and proportions in each LC)
+    mapped <- read_csv(paste0(input_path,"Data/Classified/SummaryTable",yrs[yr],"_",cname,".csv"))
     
-  #loop through all munis to update https://stackoverflow.com/a/13916342/10219907
-  for(i in 1:length(unique(diffs$muniID))) {
+    # From mapbiomas data calculate number of cells for:
+    # - agriculture
+    # - OAgri
+    mapped <- mapped %>%
+      mutate(A_mapped_cells = round(LC3 * NonNAs,0)) %>%
+      mutate(OA_mapped_cells = round(LC2 * NonNAs,0))
+    
+    
+    #muni 5006275 was only created in 2013, partitioned from 5000203
+    #so add values from 5006275 to 5000203
+    old <- mapped$A_mapped_cells[mapped$muniID == 5000203]
+    new <- mapped$A_mapped_cells[mapped$muniID == 5006275] + old
+    mapped$A_mapped_cells[mapped$muniID == 5000203] <- new
+    
+    old <- mapped$OA_mapped_cells[mapped$muniID == 5000203]
+    new <- mapped$OA_mapped_cells[mapped$muniID == 5006275] + old
+    mapped$OA_mapped_cells[mapped$muniID == 5000203] <- new 
+    
+    #mapped %>%
+    #  filter(A_mapped_cells > 0) %>%
+    #  ggplot(aes(x = A_mapped_cells)) +
+    #  geom_histogram(binwidth=5)
+      
+    
+    #read planted area data (from IBGE)
+    planted <- read_excel(paste0(input_path,"Data/PlantedAreas/PlantedArea_",yrs[yr],".xlsx"), sheet = paste0(yrs[yr]), col_names=T)  
+    #  planted <- read_csv("Data/ObservedLCmaps/PlantedArea_2000-2003.csv")
+    
+    # #From planted area data calculate number of cells for:
+    # - Soybean + Maize  [A_plant]
+    # - Cotton + Rice + Sugar_Cane + Bean + Sorghum + Wheat [OA_plant]
+    
+    #no data for first_crop maize in 2001 and 2002 so use 2003 data
+    if(yrs[yr] == 2001 | yrs[yr] == 2002) {
+      planted <- planted %>%
+        mutate(A_plant_ha = first_crop_2003 + soybean)
+    } else {
+      planted <- planted %>%
+        mutate(A_plant_ha = first_crop + soybean) 
+    }
+    
+    planted <- planted %>%
+      mutate(OA_plant_ha = cotton + rice + sugarcane + bean + sorghum + wheat) %>%
+      mutate(A_plant_cells = round(A_plant_ha / 2500, 0)) %>%
+      mutate(OA_plant_cells = round(OA_plant_ha / 2500, 0))  #one cell = 2500ha
   
-  #for(i in 1:length(unique(dummy))) {  
     
-    #i <- 1 # for testing
-    #this.muniID <- unique(dummy)[i]
-
-    this.muniID <- unique(diffs$muniID)[i]
+    #join the data
+    joined <- left_join(mapped, planted, by = c("muniID" = "IBGE_CODE"))
     
-    lcm <- filter(lc_munis, muniID == this.muniID)
-    js <- filter(diffs, muniID == this.muniID)
+    #previously used to check the join 
+    #(this is where issue with muni 5006275 was discovered
+    #munis 4300001 and 4300002 are also missing, but these are large lakes with minimal agriculture
+    #missing <- joined %>% 
+    #  filter(is.na(A_plant_cells))
+    
+    #calculate differences between mapped and planted areas (in cells)
+    diffs <- calcDiffcs(joined)
+    diffs <- diffs %>% filter(!is.na(A_plant_cells))  #drop NA
+    
+    #now update map
+    #read muniID map -> get x,y,z
+    #load the rasters
+    #munis.r <- raster(munis.r)
+    lc.r <- raster(paste0(input_path,"Data/Classified/LandCover",yrs[yr],"_",cname,".asc"))
+    
+    munis.t <- extractXYZ(munis.r, addCellID = F)
+    lc.t <- extractXYZ(lc.r, addCellID = F)
+    
+    munis.t <- as.data.frame(munis.t)
+    munis.t <- plyr::rename(munis.t, c("vals" = "muniID"))
+      
+    lc.t <- as.data.frame(lc.t)
+    lc.t <- plyr::rename(lc.t, c("vals" = "lc"))
      
-    this.conv <- convertLCs(js, lcm)
     
-    #print(this.muniID)
-    #print(lcm)
-    #print(this.conv)
+    #join observed land cover map (so have x,y,muniID,original LC
+    lc_munis <- left_join(as.data.frame(munis.t), as.data.frame(lc.t), by = c("row" = "row", "col" = "col"))
     
-    if(i == 1) final <- this.conv
-    else final <- bind_rows(final, this.conv)
-
+    #note: missing cells after join 
+    #lcNA <- lc_munis %>% filter(is.na(lc)) 
+    
+    #for testing
+    #this.muniID <- 4202073
+    #lcs <- filter(lc_munis, muniID == this.muniID)
+    #convs <- filter(j, muniID == this.muniID)
+    #convertLCs(convs, lcs)
+    
+    final <- data.frame() 
+  
+    #for testing
+    #dummy <- c(3527603,3527603,3527504,3527504,3528205)
+      
+    #loop through all munis to update https://stackoverflow.com/a/13916342/10219907
+    for(i in 1:length(unique(diffs$muniID))) {
+    
+    #for(i in 1:length(unique(dummy))) {  
+      
+      #i <- 1 # for testing
+      #this.muniID <- unique(dummy)[i]
+  
+      this.muniID <- unique(diffs$muniID)[i]
+      
+      lcm <- filter(lc_munis, muniID == this.muniID)
+      js <- filter(diffs, muniID == this.muniID)
+       
+      this.conv <- convertLCs(js, lcm)
+      
+      #print(this.muniID)
+      #print(lcm)
+      #print(this.conv)
+      
+      if(i == 1) final <- this.conv
+      else final <- bind_rows(final, this.conv)
+  
+    }
+    
+    #set final to a raster with same extent as inputs (to the same)with help from https://gis.stackexchange.com/questions/250149/assign-values-to-a-subset-of-cells-of-a-raster)
+    final.r <- raster(munis.r)
+    final.r[] <- NA_real_
+    cells <- cellFromRowCol(final.r, final$row, final$col)
+    final.r[cells] <- final$lc
+  
+    #becasue there are a few munis with no planted data we end up with some 'holes' in the data
+    #fill those holes with the original lc data
+    final.cov <- cover(final.r, lc.r)
+    final.r <- mask(final.cov, munis.r) 
+    
+    #protected and pasture, change to nature
+    Lprotect <- raster(paste0(input_path,"Data/All_ProtectionMap.asc")) #read protected map #land protection is intially identical for all services
+    final.r[final.r == 5 & Lprotect < 1] <- 1   #protected and pasture, change to nature
+  
+    writeRaster(final.r, paste0(input_path,"Data/Classified/LandCover",yrs[yr],"_",cname,"_Disagg.asc"), format = 'ascii', overwrite=T)
   }
-  
-  #set final to a raster with same extent as inputs (to the same)with help from https://gis.stackexchange.com/questions/250149/assign-values-to-a-subset-of-cells-of-a-raster)
-  final.r <- raster(munis.r)
-  final.r[] <- NA_real_
-  cells <- cellFromRowCol(final.r, final$row, final$col)
-  final.r[cells] <- final$lc
-
-  #becasue there are a few munis with no planted data we end up with some 'holes' in the data
-  #fill those holes with the original lc data
-  final.cov <- cover(final.r, lc.r)
-  final.r <- mask(final.cov, munis.r) 
-  
-  #protected and pasture, change to nature
-  Lprotect <- raster(paste0(input_path,"Data/All_ProtectionMap.asc")) #read protected map #land protection is intially identical for all services
-  final.r[final.r == 5 & Lprotect < 1] <- 1   #protected and pasture, change to nature
-
-  writeRaster(final.r, paste0(input_path,"Data/Classified/LandCover",yrs[yr],"_",cname,"_Disagg.asc"), format = 'ascii', overwrite=T)
 }
-
 
 
 unlink("Data/ASCII", recursive = T) #delete ASCII directory created above
