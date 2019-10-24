@@ -123,6 +123,8 @@ names(Stotals_ls) <- cls
 names(SDataW_Adj_ls) <- cls
 names(mapStack_ls) <- cls
 
+#i <- 1
+#j <- 1
 
 #loop over classifications
 for(i in seq_along(cls)){
@@ -258,9 +260,9 @@ for(i in seq_along(cls)){
       group_by(state, LC) %>%
       dplyr::summarise_at(vars(area),sum, na.rm=T) 
     
-    #round to integer
+    #convert ha to km2 and round to integer
     mb_areas <- mb_areas %>%
-      mutate(area_km2 = round(area,0))
+      mutate(area_km2 = round(area/100,0))  
     
     #add source variable for plotting below (re-order to match map table for union below)
     mb_areas <- mb_areas %>%
