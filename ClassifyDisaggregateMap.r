@@ -1,4 +1,5 @@
-
+#script classifies MapBiomas maps (possibly output from ResampleMosaic.r) 
+#then optionally uses planted area data to improve classification ('disaggregation')
 
 ##load libraries
 rm(list=ls())
@@ -12,7 +13,7 @@ library(readxl)
 input_path <- "C:/Users/k1076631/Google Drive/Shared/Crafty Telecoupling/Data/LandCover/MapBiomas4/BrazilInputMaps/"
 
 #Classification from Excel
-cname <- "PastureC"
+cname <- "PastureB"
 classification <- read_excel(paste0(input_path,"Data/MapBiomas_CRAFTY_classifications_v4.xlsx"), sheet = cname, range="B2:C28", col_names=F)  
 
 #classify for the following years
@@ -362,16 +363,23 @@ convertLCs <- function(convs, lcs) {
 
 #function to create summary table for each pre-classified map for comparison below
 #output tables contain proportions of LCs and count of data and NA cells for each muni (munis are rows)
-createSummaryTables <- function(munisMap, yrs){
+createSummaryTables <- function(munisMap, yrs, disagg){
 
   for(yr in seq_along(yrs)){
 
-    print(paste0("Creating Summary Table, year: ", yrs[yr]))
-
+    if(!disagg){
+      lcname <- paste0("LandCover",yrs[yr],"_",cname,".asc")
+      print(paste0("Creating Summary Table from: ", lcname))
+      outname <- paste0("Data/Classified/SummaryTable",yrs[yr],"_",cname,".csv")
+    }
     
-    inname <- paste0("Data/Classified/LandCover",yrs[yr],"_",cname,".asc") 
-    outname <- paste0("Data/Classified/SummaryTable",yrs[yr],"_",cname,".csv")
+    if(disagg){
+      lcname <- paste0("LandCover",yrs[yr],"_",cname,"_Disagg.asc")
+      print(paste0("Creating Summary Table from: ", lcname))
+      outname <- paste0("Data/Classified/SummaryTable",yrs[yr],"_",cname,"_Disagg.csv")
+    }
     
+    inname <- paste0("Data/Classified/",lcname) 
     lcMap <- raster(inname)
     
     
@@ -428,7 +436,7 @@ if(disaggregate){
 
   #may need to create summary tables of pre-classified maps first 
   if(sumTab){
-    createSummaryTables(munis.r, yrs)
+    createSummaryTables(munis.r, yrs, disagg=FALSE)
   }
   
   
@@ -575,6 +583,10 @@ if(disaggregate){
     final.r[final.r == 5 & Lprotect < 1] <- 1   #protected and pasture, change to nature
   
     writeRaster(final.r, paste0(input_path,"Data/Classified/LandCover",yrs[yr],"_",cname,"_Disagg.asc"), format = 'ascii', overwrite=T)
+  }
+  
+  if(sumTab){
+    createSummaryTables(munis.r, yrs, disagg=TRUE)
   }
 }
 
