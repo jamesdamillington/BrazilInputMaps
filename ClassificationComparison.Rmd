@@ -1,7 +1,7 @@
 ---
-title: "MapBiomas Classification - Pasture Analysis"
+title: "MapBiomas Classification Comparison"
 author: "James D.A. Millington"
-date: "Oct 2019"
+date: "Nov 2019"
 output: github_document
 #  html_document: 
 #    keep_md: yes
@@ -9,10 +9,12 @@ output: github_document
 #    df_print: paged
 ---
 
-This script analyses pasture areas, meat production and meat 'yield' (intensity) for all states and years, for two different classifications of the MapBiomas data - one that includes 'Grassland' in our 'Pasture' class and one that does not (plus disaggregation of some classes using planted area data). See accompanying Excel file for the classifications. Below the two data sources:
+This document present code and analyses of pasture areas, meat production and pasture yield for all states 2001-2018, for three different classifications of the MapBiomas data both with and without disaggregation using planted area data. 
 
-- _MB_ is the original 30m MapBiomas data
-- _Map_ is our aggregated 5km map data
+See accompanying Excel file for the classifications. Input land cover data, including the classification and disaggregation processes, are created using the `ClassifyDisaggregateMap.r` script.
+
+<details><summary>Show/Hide Code</summary>
+<p>
 
 ```{r results='hide', warning=F, message=F}
 
@@ -79,11 +81,6 @@ getLCs <- function(data)
 
 ```{r results='hide', warning=F, messages=F}
 
-#unzip(zipfile="Data/MapBiomas_23_ASCII_unclassified_allYears.zip")  # unzip all files 
-
-#for 'suppressMessages' see https://stackoverflow.com/a/41229387
-mb_data <- suppressMessages(read_csv("Data/Dados_Cobertura_MapBiomas_4.0_LAND_COVER-MUN_UF.csv"))
-
 #unzip(zipfile="Data/sim10_BRmunis_latlon_5km_2018-04-27.zip",files="sim10_BRmunis_latlon_5km_2018-04-27.asc",exdir="ASCII")  # unzip file 
 munis.r <- raster("Data/BaseMaps/sim10_BRmunis_latlon_5km.asc")  
 
@@ -96,10 +93,10 @@ munis.t <- plyr::rename(munis.t, c("vals" = "muniID"))
 
 
 ```{r}
-#Specify classifications and years to examine. Classifications should be the names of Sheets in the Classifications Excel file. Years should be between 2000 and 2015 
+#Specify classifications and years to examine. Classifications should be the names of Sheets in the Classifications Excel file. Years should be between 2001 and 2018
 
 #classifications to loop through 
-cls <- c("PastureB", "PastureC")
+cls <- c("PastureA","PastureB","PastureC")
 
 yrls <- seq(2001,2018,1)
 
@@ -129,7 +126,413 @@ names(mapStack_ls) <- cls
 #loop over classifications
 for(i in seq_along(cls)){
   
-  classification <- read_excel("Data/MapBiomas_CRAFTY_classifications_v4.xlsx", sheet = cls[i], range="B2:C28", col_names=F) 
+  classification <- read_excel("Data/MapBiomas_CRAFTY_classifications_v4.xlsx", sheet = cls[i], range="B1:C28", col_names=T) 
+  
+  #reset mapStack for this Classification
+  mapStack <- stack()
+
+  #loop over years  
+  for(j in seq_along(yrls)){
+
+    #read the classfied map to a raster  
+    map <- raster(paste0("Data/Classified/LandCover",yrls[j],"_",cls[i],".asc"))
+    
+    #add categories for later plotting etc. (see https://stackoverflow.com/a/37214431)
+    map <- ratify(map)     #tell R that the map raster is categorical 
+    rat <- levels(map)[[1]]    #apply the levels (i.e. categories) 
+   
+    #not all classes may be present after classification, so conditionally construct labels
+    labs <- c()
+    if(1 %in% levels(map)[[1]]$ID) { labs <- c(labs, "Nature") }
+    if(2 %in% levels(map)[[1]]$ID) { labs <- c(labs, "OtherAgri") }
+    if(3 %in% levels(map)[[1]]$ID) { labs <- c(labs, "Agriculture") }
+    if(4 %in% levels(map)[[1]]$ID) { labs <- c(labs, "Other") }
+    if(5 %in% levels(map)[[1]]$ID) { labs <- c(labs, "Pasture") }
+      
+    rat$landcover <- labs  
+    levels(map) <- rat 
+    
+    #add to mapStack for later plotting
+    mapStack <- stack(map, mapStack)
+  
+    #extract cell values to table format
+    map.t <- extractXYZ(map, addCellID = F)
+    map.t <- as.data.frame(map.t)
+    map.t <- plyr::rename(map.t, c("vals" = "map"))
+  
+    #so need to join 
+    map_munis <- left_join(as.data.frame(munis.t), as.data.frame(map.t), by = c("row" = "row", "col" = "col"))
+  
+    #now summarise by muniID
+    lcs_map_munis <- getLCs(map_munis)
+  
+    #convert cell counts to areas (km2) and add state id
+    map_areas_munis <- lcs_map_munis %>%
+      mutate(LC1area = round(LC1 * NonNAs) * 25) %>%
+      mutate(LC2area = round(LC2 * NonNAs) * 25) %>%
+      mutate(LC3area = round(LC3 * NonNAs) * 25) %>%
+      mutate(LC4area = round(LC4 * NonNAs) * 25) %>%
+      mutate(LC5area = round(LC5 * NonNAs) * 25) %>%
+      mutate(state = substr(muniID, 1, 2))
+  
+    #drop original cell-count columns (work with area km2 from now on)
+    map_areas_munis <- map_areas_munis %>% dplyr::select(-LC1, -LC2, -LC3, -LC4, -LC5, -NonNAs, -NAs)
+  
+    #summarise muni areas to state level
+    map_areas <- map_areas_munis %>%
+      group_by(state) %>%
+      dplyr::summarise_at(vars(LC1area:LC5area),sum, na.rm=T) %>%  #use _at so state is not summarised
+      mutate_if(is.character, as.integer)
+  
+    #gather to long format for union below
+    map_areas <- map_areas %>%
+      gather(key = LCa, value = area, -state)
+    
+    #recode LCs for union below
+    map_areas <- map_areas %>%
+      mutate(LC = if_else(LCa == "LC1area", 1, 
+        if_else(LCa == "LC2area", 2,
+        if_else(LCa == "LC3area", 3,
+        if_else(LCa == "LC4area", 4,
+        if_else(LCa == "LC5area", 5, 0)
+        )))))
+  
+    #add source variable for plotting below (re-order to match map table for union below)
+    map_areas <- map_areas %>%
+      dplyr::select(-LCa) %>%
+      mutate(source = "Map") %>%
+      dplyr::select(state, LC, source, area)
+  
+
+    
+     #relabel states to characters
+    CData_yr <- map_areas %>%
+      mutate(state = if_else(state == 17, "TO", 
+        if_else(state == 29, "BA",
+        if_else(state == 31, "MG",
+        if_else(state == 35, "SP",
+        if_else(state == 41, "PR",
+        if_else(state == 42, "SC",
+        if_else(state == 43, "RS", 
+        if_else(state == 50, "MS",
+        if_else(state == 51, "MT",
+        if_else(state == 52, "GO", "NA"
+        ))))))))))
+      )
+    
+    #relabel LCs to characters
+    CData_yr <- CData_yr %>%
+      mutate(LC = if_else(LC == 1, "Nature", 
+        if_else(LC == 2, "OtherAgri",
+        if_else(LC == 3, "Agri",
+        if_else(LC == 4, "Other",
+        if_else(LC == 5, "Pasture", "NA"
+        )))))
+      )
+    
+    #add year column
+    CData_yr <- CData_yr %>%
+      mutate(year = yrls[j])
+    
+    #union CData for years here.
+    #if first iteration of classification loop (re)create the tibble
+    if(j == 1){
+        CData <- CData_yr
+    } else {
+        #else join data to tibble (by creating another tibble, then join (ensure rows are not lost)
+        CData <- union_all(CData, CData_yr)
+    }
+  }
+  
+  CData_ls[[i]] <- CData
+  
+  names(mapStack) <- yrls
+  mapStack_ls[[i]] <- mapStack
+}
+
+```
+
+
+</p>
+</details>
+
+# Pre-Disaggregation Classiifcation
+
+## Maps
+
+First, lets look at maps for the different classifications (for the final year) for quick visual comparison.
+
+```{r fig.width=12, warning=F, message=F}
+for(i in seq_along(mapStack_ls)){
+  
+  clabs <- c()
+  if(1 %in% levels(mapStack_ls[[i]])[[1]]$ID) { clabs <- c(clabs, 'forestgreen') }
+  if(2 %in% levels(mapStack_ls[[i]])[[1]]$ID) { clabs <- c(clabs, 'darkolivegreen') }
+  if(3 %in% levels(mapStack_ls[[i]])[[1]]$ID) { clabs <- c(clabs, 'wheat1') }
+  if(4 %in% levels(mapStack_ls[[i]])[[1]]$ID) { clabs <- c(clabs, 'gray') }
+  if(5 %in% levels(mapStack_ls[[i]])[[1]]$ID) { clabs <- c(clabs, 'orange2') }
+  
+  #print(cls[i])
+  
+  #length(yrls) is the index of the final year
+  #tail(yrls, n=1) is the 'label' for the final year
+  print(rasterVis::levelplot(mapStack_ls[[i]][[length(yrls)]], pretty=T,att = 'landcover', col.regions=clabs, main=paste(cls[[i]], tail(yrls, n=1))))
+  
+}
+
+```
+
+From these maps, we can immediately see that _PastureA_ has much less Pasture cover than the other two classifications.In particular, in the southern state of Rio Grande do Sul (RS) _PastureA_ has much less Pasture areas as much of the state is classified as Grassland. The Grassland class is significant in Rio Grande do Sul because it is within the Pampa biome and has seen a long history of intense efforts by public and private groups to increase the (pasture) productivity of the grasslands. 
+
+As we will see below, this difference in classified land area leads to great differences in calculate pasture yields in RS. Other study area states have relatively small areas of grassland so are less affected by the inclusion, although Santa Catarina (a small state on the edge of the Pampa biome) is next most influenced. 
+
+Let's examine these differences between the classifications further quantitatively, looking at both total area and the yield implied when compared to production data.  
+
+## Pasture area by state, year and classification
+
+The figure below shows again that generally the _PastureA_ classification produces much less Pasture land area. 
+
+<details><summary>Show/Hide Code</summary>
+<p>
+```{r warning=F, message=F}
+
+#add classification lable to the CData tables
+for(i in seq_along(cls)){
+  
+  CData_ls[[i]] <- CData_ls[[i]] %>%
+    mutate(classification = cls[i])
+}
+
+#union the CData tables for the different classifications
+for(i in seq_along(cls)){
+  
+  if(i == 1) { CDataU <- CData_ls[[i]] }
+  else { CDataU <- dplyr::union(CDataU, CData_ls[[i]]) }
+}
+
+#filter to pasture only
+CData_Pas <- CDataU %>%
+  dplyr::filter(LC == "Pasture")
+```
+</p>
+</details>
+
+```{r fig.height=20, fig.width=12}
+
+CData_Pas %>% 
+  ggplot(aes(x=classification, y=area, fill=classification)) + 
+    geom_bar(stat="identity", colour="white", position = "dodge") +
+    scale_y_continuous(name=expression(Area~km^{2}), labels = scales::comma) +
+    facet_grid(year~state) +
+    xlab("") +
+    theme(axis.text.x = element_blank()) +
+    ggtitle("Pasture Area by Classification and State")
+
+```
+
+## Pasture Yield by state, year and classification
+
+This first plot below shows that _PastureA_ for Rio Grande do Sul has vastly greater pasture yield than all other classification-state combinations.
+
+<details><summary>Show/Hide Code</summary>
+<p>
+```{r warning=F, message=F}
+#Load Production Data
+meat_prod_Astates <- read_excel("Data/Cattle_meat_production_Kg_2001_2018_all_states.xlsx", sheet = "Plan1", skip = 1)  #data for all states Astates
+
+```
+
+```{r echo=F, warning=F, message=F}
+#Tidy production data
+#tidy meat data
+meat_prod_Astates %>%
+  rename(state = NM_UF_SIGLA) %>%
+  dplyr::select(-NM_UF, -CD_GCUF) %>%      #drop columns
+  filter(!is.na(state)) %>%   #safer way to remove text line at bottom of state column
+  mutate_at(vars("2001":"2018"), as.numeric) -> meat_prod_Astates
+
+Fstate_vals <- c(17,	29,	31,	35,	41,	42,	43,	50,	51,	52)
+Fstate_abbrev <- c("TO", "BA", "MG", "SP", "PR",  "SC", "RS", "MS", "MT", "GO")
+
+#Filter meat focal states
+meat_prod_Astates %>%
+  filter(state %in% Fstate_abbrev)  -> meat_prod_Fstates
+
+meat_prod_Fstates_long <- meat_prod_Fstates %>%
+  gather(key = year, value = kg, -state) %>%
+  mutate_at(vars(year), as.integer)
+
+```
+
+```{r}
+
+#join to pasture areas
+meat_areas <- inner_join(CData_Pas, meat_prod_Fstates_long, by = c("year", "state"))
+
+#calculate intensities (yields)
+meat_areas <- meat_areas %>%
+  mutate(intensity = kg / area)
+
+```
+</p>
+</details>
+
+```{r fig.height=20, fig.width=12}
+
+meat_areas %>% 
+  ggplot(aes(x=classification, y=intensity, fill=classification)) + 
+    geom_bar(stat="identity", colour="white", position = "dodge") +
+    scale_y_continuous(name=expression(Yield~kg~km^{2})) +
+    facet_grid(year~state) +
+    xlab("")+
+    theme(axis.text.x = element_blank()) +
+    ggtitle("Pasture Yield by Classification and State")
+
+```
+
+In fact, values are so large it is difficult to see variation for other states in this plot because of the y-axis scale, so let's repeat this plot but limiting the upper boundary of the yield plotted (to 15,000 kg km-2).
+
+```{r fig.height=20, fig.width=12}
+
+meat_areas %>% 
+  ggplot(aes(x=classification, y=intensity, fill=classification)) + 
+    geom_bar(stat="identity", colour="white", position = "dodge") +
+    scale_y_continuous(name=expression(Yield~kg~km^{2}),limits = c(0, 15000)) +
+    facet_grid(year~state) +
+    xlab("")+
+    theme(axis.text.x = element_blank()) +
+    ggtitle("Pasture Yield by Classification and State (limited at 15,000 kg km-2")
+
+```
+
+Where bars are missing in the plot above, this is because the value for that bar is greater than 15,000. Now we can see more clearly, that in other states _PastureA_ is also generally has the highest yield compared to the other classifications. 
+
+
+## Summary stats over time
+
+Now let's summarise the data over time and examine their means and medians (with variation - error bar is one SE) and maxima during 2001-2018.
+
+<details><summary>Show/Hide Code</summary>
+<p>
+```{r echo=F}
+meat_summary <- meat_areas %>%
+  group_by(state, classification, source) %>%
+  summarise(
+    area_mn = round(mean(area),0),
+    area_md = round(median(area),0),
+    area_sd = round(sd(area),0),
+    prod_mn = round(mean(kg),0),
+    prod_md = round(median(kg),0),
+    prod_sd = round(sd(kg),0),
+    int_mn = round(mean(intensity),0),
+    int_md = round(median(intensity),0),
+    int_max = round(max(intensity),0),
+    int_sd = round(sd(intensity),0),
+    int_se = round(sd(intensity) / length(intensity), 3)
+    ) 
+
+```
+</p>
+</details>
+
+```{r fig.width=8}
+meat_summary %>%
+  ggplot(aes(x=classification, y=int_mn, fill=classification)) + 
+  geom_errorbar(aes(ymin=int_mn-int_se, ymax=int_mn+int_se), width=.1) +
+  geom_bar(stat="identity", colour="white", position = "dodge") +
+  facet_grid(.~state) +
+  scale_y_continuous(name=expression(Yield~kg~km^{2}), limits = c(0, 10000), labels = scales::comma) +
+  xlab("")+
+  theme(axis.text.x = element_blank()) +
+  ggtitle("Pasture Yield, Mean")
+
+meat_summary %>%
+  ggplot(aes(x=classification, y=int_md, fill=classification)) + 
+  geom_errorbar(aes(ymin=int_md-int_se, ymax=int_md+int_se), width=.1) +
+  geom_bar(stat="identity", colour="white", position = "dodge") +
+  facet_grid(.~state) +
+  scale_y_continuous(name=expression(Yield~kg~km^{2}), limits = c(0, 10000), labels = scales::comma) +
+  xlab("")+
+  theme(axis.text.x = element_blank()) +
+  ggtitle("Pasture Yield, Median")
+
+meat_summary %>%
+  ggplot(aes(x=classification, y=int_max, fill=classification)) + 
+  geom_bar(stat="identity", colour="white", position = "dodge") +
+  facet_grid(.~state) +
+  scale_y_continuous(name=expression(Yield~kg~km^{2}), limits = c(0, 15000), labels = scales::comma) +
+  xlab("")+
+  theme(axis.text.x = element_blank()) +
+  ggtitle("Pasture Yield, Maxima")
+```
+
+In these three plots, we again we see the same pattern; _PastureA_ produces greater yields than _PastureB_ and _PastureC_ (except for Sao Paolo state). 
+
+But how do these yields compare to observed and projected yields? The table below presents yields by state and classification (sorted descending on the maximum).
+
+```{r}
+
+int_data <- meat_summary %>%
+  dplyr::select(-starts_with("prod"), -starts_with("area")) 
+
+kable(arrange(int_data, desc(int_max), state, classification), caption="Intensities, sorted on max values descending")
+
+```
+
+We can also calculate the mean state maximum across all years for each of the classifications:
+
+```{r}
+meat_summary %>%
+  dplyr::select(-starts_with("prod"), -int_sd, -int_se) %>%
+  group_by(classification) %>%
+  summarise_at(vars(int_max), mean)
+```
+
+Largest values for _PastureB_ and _PastureC_ seem reasonable and align well with expected future yields (important to have a max contemporary yield that is feasible in future, to be able to run the model into the future). For example, [this report](http://csr.ufmg.br/pecuaria/portfolio-item/cenarios-para-o-brasil/) expects yields of 8,730kg/km2 in 2030 if the Brazilian sector continues to modernize (in "Produção de @/hectare" @ is equivalent to 15kg). This potential aligns well with the maximum previously observed intensity of 9,100kg/km2 (which is likely an outlier given remaining uncertainty in land cover classification). Ultimately, the _PastureA_ classification produces yield values which are just not feasible relatively to observed values. 
+
+# Post-Disaggregation Classiifcation
+
+Now that we have discounted the _PastureA_ classification, let's examine _PastureB_ and _PastureC_ in more detail after they have been disaggregated using planted area data (see `ClassifyDisaggregateMap.r`). We'll repeat much of the above analysis, but using disaggregated maps as input. 
+
+
+<details><summary>Show/Hide Code</summary>
+<p>
+
+```{r}
+#Specify classifications and years to examine. Classifications should be the names of Sheets in the Classifications Excel file. Years should be between 2001 and 2018
+
+#classifications to loop through 
+cls <- c("PastureB","PastureC")
+
+yrls <- seq(2001,2018,1)
+
+```
+
+
+```{r warning=F, message=F}
+
+#lists to hold data tables 
+CData_ls <- vector('list', length(cls))
+CDataW_ls <- vector('list', length(cls))
+SDataW_ls <- vector('list', length(cls))
+Stotals_ls <- vector('list', length(cls))
+SDataW_Adj_ls <- vector('list', length(cls))
+mapStack_ls <- vector('list', length(cls))
+
+names(CData_ls) <- cls
+names(CDataW_ls) <- cls
+names(SDataW_ls) <- cls
+names(Stotals_ls) <- cls
+names(SDataW_Adj_ls) <- cls
+names(mapStack_ls) <- cls
+
+#i <- 1
+#j <- 1
+
+#loop over classifications
+for(i in seq_along(cls)){
+  
+  classification <- read_excel("Data/MapBiomas_CRAFTY_classifications_v4.xlsx", sheet = cls[i], range="B1:C28", col_names=T) 
   
   #reset mapStack for this Classification
   mapStack <- stack()
@@ -206,76 +609,10 @@ for(i in seq_along(cls)){
       mutate(source = "Map") %>%
       dplyr::select(state, LC, source, area)
   
-    ###Summarise MapBiomas data to the states we are simulating
-  
-    #filter to get only the states we want
-    mb_areas <- mb_data %>%
-      filter(estado == "TOCANTINS" | 
-          estado == "BAHIA" |
-          estado == "MINAS GERAIS" |
-          estado == "SÃO PAULO" |
-          estado == "PARANÁ" |
-          estado == "SANTA CATARINA" |
-          estado == "RIO GRANDE DO SUL" |
-          estado == "MATO GROSSO DO SUL" |
-          estado == "MATO GROSSO" |
-          estado == "GOIÁS")
+
     
-    #add state column containing state ids
-    #mb_areas <- mb_areas %>%
-    #  mutate(state = if_else(Estados == "TOCANTINS", 17, 
-    #    if_else(Estados == "BAHIA", 29,
-    #    if_else(Estados == "MINAS GERAIS", 31,
-    #    if_else(Estados == "SÃO PAULO", 35,
-    #    if_else(Estados == "PARANÁ", 41,
-    #    if_else(Estados == "SANTA CATARINA", 42,
-    #    if_else(Estados == "RIO GRANDE DO SUL", 43, 
-    #    if_else(Estados == "MATO GROSSO DO SUL", 50, 
-    #    if_else(Estados == "MATO GROSSO", 51,
-    #    if_else(Estados == "GOIÁS", 52, 0
-    #    ))))))))))
-    #  )
-    
-        
-    #select only columns we want    
-    mb_areas <- mb_areas %>%
-      dplyr::rename(state = COD_ESTADO) %>%
-      dplyr::select(state, paste0(yrls[j]), `cod.classe`) %>% 
-      dplyr::rename(area = paste0(yrls[j])) %>%
-      dplyr::rename(LC = `cod.classe`) 
-      
-    
-    #because there is no consistency between land cover labels
-   # legenda = c("Forest Formations"=1, "Natural Forest Formations"=2, "Dense Forest"=3, "Savanna Formations"=4, "Mangroves"=5,"Forest Plantations"=9, "Non-Forest Natural Formations"=10, "Non Forest Wetlands"=11, "Grasslands"=12, "Other Non Forest Natural Formations"=13, "Farming"=14, "Pasture"=15, "Agriculture"=18, "Agriculture or Pasture"=21, "Non-Vegetated Areas"=22, "Dunes and Beaches"=23, "Urban Infrastructure"=24,"Other Non-Vegetated Area"=25,"Water Bodies"=26, "Non-Observed"=27)
-    
-    #recode to values (which match the map)
-    #mb_areas <- mb_areas %>%
-    #  mutate(LC = recode(`Classe Nivel 3`, !!!legenda))
-    
-    #use the classification values from above to relassify land covers
-    mb_areas$LC <- plyr::mapvalues(mb_areas$LC, from=as.numeric(classification$X__1), to=as.numeric(classification$X__2))
-    
-    #calculate total LC area by state
-    mb_areas <- mb_areas %>%
-      group_by(state, LC) %>%
-      dplyr::summarise_at(vars(area),sum, na.rm=T) 
-    
-    #convert ha to km2 and round to integer
-    mb_areas <- mb_areas %>%
-      mutate(area_km2 = round(area/100,0))  
-    
-    #add source variable for plotting below (re-order to match map table for union below)
-    mb_areas <- mb_areas %>%
-      dplyr::select(-area) %>%
-      mutate(source = "MB") %>%
-      rename(area = area_km2) %>%
-      dplyr::select(state, LC, source, area)
-      
-  
-    CData_yr <- union_all(map_areas, mb_areas)
-  
-    #relabel states to characters
-    CData_yr <- CData_yr %>%
+     #relabel states to characters
+    CData_yr <- map_areas %>%
       mutate(state = if_else(state == 17, "TO", 
         if_else(state == 29, "BA",
         if_else(state == 31, "MG",
@@ -321,28 +658,6 @@ for(i in seq_along(cls)){
 
 ```
 
-#Maps
-For 2001 for the different classifications (for quick visual comparison)
-```{r fig.width=12, warning=F, message=F}
-for(i in seq_along(mapStack_ls)){
-  
-  clabs <- c()
-  if(1 %in% levels(mapStack_ls[[i]])[[1]]$ID) { clabs <- c(clabs, 'forestgreen') }
-  if(2 %in% levels(mapStack_ls[[i]])[[1]]$ID) { clabs <- c(clabs, 'wheat1') }
-  if(3 %in% levels(mapStack_ls[[i]])[[1]]$ID) { clabs <- c(clabs, 'orange2') }
-  if(4 %in% levels(mapStack_ls[[i]])[[1]]$ID) { clabs <- c(clabs, 'gray') }
-  if(5 %in% levels(mapStack_ls[[i]])[[1]]$ID) { clabs <- c(clabs, 'darkolivegreen') }
-  
-  print(cls[i])
-
-  print(rasterVis::levelplot(mapStack_ls[[i]]$X2001, pretty=T,att = 'landcover', col.regions=clabs, main=paste0(cls[[i]], " 2001")))
-  
-}
-
-```
-
-
-##Pasture area by state, year and classification
 ```{r warning=F, message=F}
 
 #add classification lable to the CData tables
@@ -364,65 +679,6 @@ CData_Pas <- CDataU %>%
   dplyr::filter(LC == "Pasture")
 ```
 
-
-```{r fig.height=20, fig.width=12}
-
-CData_Pas %>% 
-  dplyr::filter(source == "Map") %>%
-  ggplot(aes(x=classification, y=area, fill=classification)) + 
-    geom_bar(stat="identity", colour="white", position = "dodge") +
-    scale_y_continuous(name=expression(Area~km^{2}), labels = scales::comma) +
-  #labs(x=expression(Data~Source),y=expression(Area~km^{2})) +
-    facet_grid(year~state) +
-    xlab("") +
-    #ylab("Pasture Area km2") +
-    theme(axis.text.x = element_blank()) +
-  ggtitle("Map")
-
-CData_Pas %>% 
-  dplyr::filter(source == "MB") %>%
-  ggplot(aes(x=classification, y=area, fill=classification)) + 
-    geom_bar(stat="identity", colour="white", position = "dodge") +
-    scale_y_continuous(name=expression(Area~km^{2}), labels = scales::comma) +
-    facet_grid(year~state) +
-    xlab("")+
-    #ylab("Pasture Area km2") +
-    theme(axis.text.x = element_blank()) +
-  ggtitle("MB")
-
-```
-
-
-
-```{r warning=F, message=F}
-#Load Production Data
-meat_prod_Astates <- read_excel("Data/Cattle_meat_production_Kg_2001_2018_all_states.xlsx", sheet = "Plan1", skip = 1)  #data for all states Astates
-
-```
-
-```{r echo=F, warning=F, message=F}
-#Tidy production data
-#tidy meat data
-meat_prod_Astates %>%
-  rename(state = NM_UF_SIGLA) %>%
-  dplyr::select(-NM_UF, -CD_GCUF) %>%      #drop columns
-  filter(!is.na(state)) %>%   #safer way to remove text line at bottom of state column
-  mutate_at(vars("2001":"2018"), as.numeric) -> meat_prod_Astates
-
-Fstate_vals <- c(17,	29,	31,	35,	41,	42,	43,	50,	51,	52)
-Fstate_abbrev <- c("TO", "BA", "MG", "SP", "PR",  "SC", "RS", "MS", "MT", "GO")
-
-#Filter meat focal states
-meat_prod_Astates %>%
-  filter(state %in% Fstate_abbrev)  -> meat_prod_Fstates
-
-meat_prod_Fstates_long <- meat_prod_Fstates %>%
-  gather(key = year, value = kg, -state) %>%
-  mutate_at(vars(year), as.integer)
-
-```
-
-
 ```{r}
 
 #join to pasture areas
@@ -433,44 +689,36 @@ meat_areas <- meat_areas %>%
   mutate(intensity = kg / area)
 
 ```
+</p>
+</details>
 
 
-###Production (from Pasture) by state, year and classification
+## Pasture Yield by state, year and classification
 
-Differentiated between original 30m MapBiomas reported data ( _MB_ ) and our aggregated 5km map data ( _map_ ) and
+We see that in general there is little difference between the two classifications; Santa Catarina state has possibly the largest differences with _PastureB_ resulting in greater Pasture yields.
 
-The next two plots have the same variables on the y-axis (Yield) but the second plot is differently scaled (some bars are not plotted because their value is greater than the limit of the axis).
 ```{r fig.height=20, fig.width=12}
 
 meat_areas %>% 
-  filter(source == "Map") %>%
+  #filter(source == "Map") %>%
   ggplot(aes(x=classification, y=intensity, fill=classification)) + 
     geom_bar(stat="identity", colour="white", position = "dodge") +
-    scale_y_continuous(name=expression(Yield~kg~km^{2}),limits = c(0, 30000)) +
+    scale_y_continuous(name=expression(Yield~kg~km^{2})) +
     facet_grid(year~state) +
     xlab("")+
     theme(axis.text.x = element_blank()) +
-  ggtitle("Meat, Map")
-
-meat_areas %>% 
-  filter(source == "MB") %>%
-  ggplot(aes(x=classification, y=intensity, fill=classification)) + 
-    geom_bar(stat="identity", colour="white", position = "dodge") +
-    scale_y_continuous(name=expression(Yield~kg~km^{2}),limits = c(0, 30000)) +
-    facet_grid(year~state) +
-    xlab("") +
-    theme(axis.text.x = element_blank()) +
-  ggtitle("Meat, MB")
+    ggtitle("Pasture Yield by Classification and State")
 
 ```
 
-We see SC, SP and RS are all high relative to other states. We also see that yields are generally greatest for _PatureA_ classification and lower for _PastureB_ (which include MapBiomas' _Grassland_ in our definition of Pasture.
+## Summary stats over time
 
+Now let's summarise the data over time again, and examine their means and medians (with variation - error bar is one SE) and maxima during 2001-2018.
 
-##Summary stats over time
-Now let's summarise the data over time and examine their means and medians (with variation - error bar is one SE)
+<details><summary>Show/Hide Code</summary>
+<p>
 ```{r echo=F}
-meat_areas %>%
+meat_summary <- meat_areas %>%
   group_by(state, classification, source) %>%
   summarise(
     area_mn = round(mean(area),0),
@@ -484,9 +732,11 @@ meat_areas %>%
     int_max = round(max(intensity),0),
     int_sd = round(sd(intensity),0),
     int_se = round(sd(intensity) / length(intensity), 3)
-    ) -> meat_summary
+    ) 
 
 ```
+</p>
+</details>
 
 ```{r fig.width=8}
 meat_summary %>%
@@ -494,117 +744,65 @@ meat_summary %>%
   ggplot(aes(x=classification, y=int_mn, fill=classification)) + 
   geom_errorbar(aes(ymin=int_mn-int_se, ymax=int_mn+int_se), width=.1) +
   geom_bar(stat="identity", colour="white", position = "dodge") +
-  facet_grid(source~state) +
-  scale_y_continuous(name=expression(Yield~kg~km^{2}), labels = scales::comma) +
+  facet_grid(.~state) +
+  scale_y_continuous(name=expression(Yield~kg~km^{2}), limits = c(0, 10000), labels = scales::comma) +
   xlab("")+
   theme(axis.text.x = element_blank()) +
-  ggtitle("Meat, Mean")
+  ggtitle("Pasture Yield, Mean")
 
 meat_summary %>%
   #filter(source == "Map") %>%
   ggplot(aes(x=classification, y=int_md, fill=classification)) + 
   geom_errorbar(aes(ymin=int_md-int_se, ymax=int_md+int_se), width=.1) +
   geom_bar(stat="identity", colour="white", position = "dodge") +
-  facet_grid(source~state) +
-  scale_y_continuous(name=expression(Yield~kg~km^{2}), labels = scales::comma) +
+  facet_grid(.~state) +
+  scale_y_continuous(name=expression(Yield~kg~km^{2}), limits = c(0, 10000), labels = scales::comma) +
   xlab("")+
   theme(axis.text.x = element_blank()) +
-  ggtitle("Meat, Median")
+  ggtitle("Pasture Yield, Median")
 
 meat_summary %>%
   #filter(source == "Map") %>%
   ggplot(aes(x=classification, y=int_max, fill=classification)) + 
   #geom_errorbar(aes(ymin=int_md-int_se, ymax=int_md+int_se), width=.1) +
   geom_bar(stat="identity", colour="white", position = "dodge") +
-  facet_grid(source~state) +
-  scale_y_continuous(name=expression(Yield~kg~km^{2}), labels = scales::comma) +
+  facet_grid(.~state) +
+  scale_y_continuous(name=expression(Yield~kg~km^{2}), limits = c(0, 10000), labels = scales::comma) +
   xlab("")+
   theme(axis.text.x = element_blank()) +
-  ggtitle("Meat, Maxima")
+  ggtitle("Pasture Yield, Maxima")
 ```
 
-Again we see the same patterns; SC, SP and RS are greater than other states and _PastureA_ > _PastureB_.
+As above, when looking at summaries we see that the two classifications are generally similar, but with _PastureB_ producing more land area, notably for Santa Catarina, Sao Paolo and Parana.
 
-If we plot again, but this time limiting the y-axis to 15,000 kg/km2 (max at 20,000)
-```{r fig.width=8}
-meat_summary %>%
-  #filter(source == "MB") %>%
-  ggplot(aes(x=classification, y=int_mn, fill=classification)) + 
-  geom_errorbar(aes(ymin=int_mn-int_se, ymax=int_mn+int_se), width=.1) +
-  geom_bar(stat="identity", colour="white", position = "dodge") +
-  facet_grid(source~state) +
-  scale_y_continuous(name=expression(Yield~kg~km^{2}), labels = scales::comma,limits = c(0, 15000)) +
-  xlab("")+
-  theme(axis.text.x = element_blank()) +
-  ggtitle("Meat, Mean")
-
-meat_summary %>%
-  #filter(source == "Map") %>%
-  ggplot(aes(x=classification, y=int_md, fill=classification)) + 
-  geom_errorbar(aes(ymin=int_md-int_se, ymax=int_md+int_se), width=.1) +
-  geom_bar(stat="identity", colour="white", position = "dodge") +
-  facet_grid(source~state) +
-  scale_y_continuous(name=expression(Yield~kg~km^{2}), labels = scales::comma,limits = c(0, 15000)) +
-  xlab("")+
-  theme(axis.text.x = element_blank()) +
-  ggtitle("Meat, Median")
-
-meat_summary %>%
-  #filter(source == "Map") %>%
-  ggplot(aes(x=classification, y=int_max, fill=classification)) + 
-  #geom_errorbar(aes(ymin=int_md-int_se, ymax=int_md+int_se), width=.1) +
-  geom_bar(stat="identity", colour="white", position = "dodge") +
-  facet_grid(source~state) +
-  scale_y_continuous(name=expression(Yield~kg~km^{2}), labels = scales::comma,limits = c(0, 20000)) +
-  xlab("")+
-  theme(axis.text.x = element_blank()) +
-  ggtitle("Meat, Maxima")
-```
-
-We can now more clearly compare classifications. In some states (PR, SP) _PastureA_ and _PastureB_ are very similar yield values, but in many others _PastureB_ is lower. We also see that yields are greater for  _MB_ data compared to _Map_. (NB: _PastureB_ for SC is very similar for MB data)
-
-Using the _PastureB_ classification the 'perfect' meat yield would be ~9,200 kg km2 if using mean/median or ~11,000 if using max (see raw tables of summary data below)
+Let's look again at yields by state and classification (sorted descending on the maximum).
 
 ```{r}
 
-meat_summary %>%
-  filter(source == "Map" & classification == "PastureB") %>%
-  dplyr::select(-starts_with("prod"), -int_sd, -int_se) %>%
-  filter(state != "SC") 
+int_data <- meat_summary %>%
+  #filter(source == "Map") %>%
+  dplyr::select(-starts_with("prod"), -starts_with("area")) #%>%
+  #filter(state != "SC") 
+
+kable(arrange(int_data, desc(int_max), state, classification), caption="Intensities, sorted on max values descending")
 
 ```
 
-
-Or, mean of maxima (without SC) is ~4,500
+And the mean state maximum across all years for each of the classifications:
 
 ```{r}
-
 meat_summary %>%
-  filter(source == "Map" & classification == "PastureB") %>%
+  #filter(source == "Map" & classification == "PastureB") %>%
   dplyr::select(-starts_with("prod"), -int_sd, -int_se) %>%
-  filter(state != "SC") %>%
+  #filter(state != "SC") %>%
   group_by(classification) %>%
   summarise_at(vars(int_max), mean)
-
 ```
 
-Values for _PastureB_ seem reasonable and align well with expected future yields (important to have a max contemporary yield that is feasible in future, to be able to run the model into the future). For example, [this report](http://csr.ufmg.br/pecuaria/portfolio-item/cenarios-para-o-brasil/). All in Portuguese, but the tables and figures is not hard to understand expects yields of 8,730kg/km2 in 2030 if the Brazilian sector continues to modernize (in "Produção de @/hectare" @ is equivalent to 15kg). This potential aligns well with the median intensity of 9,100kg/km2.
+Yield values are generally quite similar to those calculated for non-disaggregated maps. 
 
-However, given that we want some indication of 'perfect', and to allow room for scenarios of extraordinary continued yield improvement) we will use the higher value of 11,000 kg/sq km as 'perfect' when calibrating (the maximum of all states bar SC in PastureB land cover re-classification)
+So, overall there is not much difference between the two classifications. We we will chose the _PastureB_ classification as it seems to make more sense to include the MapBiomas _Mosaic of Agriculture and Pasture_ class as Agriculture prior to disaggregation (given the disaggregation process used).
 
-In turn, 11,000 kg/sq km == **0.275 gg/25sq km**  We will use this value as a single unit of of 'Pasture service' from CRAFTY. 
+## CRAFTY Service Provision
 
-Full meat summary data table for reference:
-
-```{r }
-
-kable(arrange(meat_summary, desc(int_mn), state, classification), caption="Meat data, sorted on mean production values descending")
-
-```
-
-
-```{r}
-#if needed to remove ASCII folder
-#unlink("ASCII", recursive = T) #delete ASCII directory created above
-
-```
+Having chosem the _PastureB_ classification, we now need to identify the some indication of 'perfect' yield in our data to enable conversion of meat production (in kg) to CRAFTY service production units. We could use the maximum yield observed in our data (~9,100 kg/sq km) but to allow room for future scenarios of extraordinary continued yield improvement, we will use a higher value of 11,000 kg/sq km. In turn, 11,000 kg/sq km == **0.275 gg/25sq km**  We will use this value as a single unit of of 'Pasture service' from CRAFTY. 
