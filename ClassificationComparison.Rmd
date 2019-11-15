@@ -16,7 +16,7 @@ See accompanying Excel file for the classifications. Input land cover data, incl
 <details><summary>Show/Hide Code</summary>
 <p>
 
-```{r results='hide', warning=F, message=F}
+```{r warning=F, message=F}
 
 rm(list=ls())
 
@@ -251,8 +251,6 @@ for(i in seq_along(cls)){
 }
 
 ```
-
-
 </p>
 </details>
 
@@ -294,6 +292,7 @@ The figure below shows again that generally the _PastureA_ classification produc
 
 <details><summary>Show/Hide Code</summary>
 <p>
+
 ```{r warning=F, message=F}
 
 #add classification lable to the CData tables
@@ -336,6 +335,7 @@ This first plot below shows that _PastureA_ for Rio Grande do Sul has vastly gre
 
 <details><summary>Show/Hide Code</summary>
 <p>
+
 ```{r warning=F, message=F}
 #Load Production Data
 meat_prod_Astates <- read_excel("Data/Cattle_meat_production_Kg_2001_2018_all_states.xlsx", sheet = "Plan1", skip = 1)  #data for all states Astates

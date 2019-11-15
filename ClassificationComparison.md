@@ -3,12 +3,21 @@ MapBiomas Classification Comparison
 James D.A. Millington
 Nov 2019
 
-This document present code and analyses of pasture areas, meat production and pasture yield for all states 2001-2018, for three different classifications of the MapBiomas data both with and without disaggregation using planted area data.
+This document present code and analyses of pasture areas, meat
+production and pasture yield for all states 2001-2018, for three
+different classifications of the MapBiomas data both with and without
+disaggregation using planted area data.
 
-See accompanying Excel file for the classifications. Input land cover data, including the classification and disaggregation processes, are created using the `ClassifyDisaggregateMap.r` script.
+See accompanying Excel file for the classifications. Input land cover
+data, including the classification and disaggregation processes, are
+created using the `ClassifyDisaggregateMap.r` script.
 
-<details><summary>Show/Hide Code</summary>
+<details>
+
+<summary>Show/Hide Code</summary>
+
 <p>
+
 ``` r
 rm(list=ls())
 
@@ -233,15 +242,15 @@ for(i in seq_along(cls)){
 ```
 
 </p>
+
 </details>
 
-Pre-Disaggregation Classiifcation
-=================================
+# Pre-Disaggregation Classiifcation
 
-Maps
-----
+## Maps
 
-First, lets look at maps for the different classifications (for the final year) for quick visual comparison.
+First, lets look at maps for the different classifications (for the
+final year) for quick visual comparison.
 
 ``` r
 for(i in seq_along(mapStack_ls)){
@@ -262,21 +271,38 @@ for(i in seq_along(mapStack_ls)){
 }
 ```
 
-![](ClassificationComparison_files/figure-markdown_github/unnamed-chunk-6-1.png)![](ClassificationComparison_files/figure-markdown_github/unnamed-chunk-6-2.png)![](ClassificationComparison_files/figure-markdown_github/unnamed-chunk-6-3.png)
+![](ClassificationComparison_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->![](ClassificationComparison_files/figure-gfm/unnamed-chunk-6-2.png)<!-- -->![](ClassificationComparison_files/figure-gfm/unnamed-chunk-6-3.png)<!-- -->
 
-From these maps, we can immediately see that *PastureA* has much less Pasture cover than the other two classifications.In particular, in the southern state of Rio Grande do Sul (RS) *PastureA* has much less Pasture areas as much of the state is classified as Grassland. The Grassland class is significant in Rio Grande do Sul because it is within the Pampa biome and has seen a long history of intense efforts by public and private groups to increase the (pasture) productivity of the grasslands.
+From these maps, we can immediately see that *PastureA* has much less
+Pasture cover than the other two classifications.In particular, in the
+southern state of Rio Grande do Sul (RS) *PastureA* has much less
+Pasture areas as much of the state is classified as Grassland. The
+Grassland class is significant in Rio Grande do Sul because it is within
+the Pampa biome and has seen a long history of intense efforts by public
+and private groups to increase the (pasture) productivity of the
+grasslands.
 
-As we will see below, this difference in classified land area leads to great differences in calculate pasture yields in RS. Other study area states have relatively small areas of grassland so are less affected by the inclusion, although Santa Catarina (a small state on the edge of the Pampa biome) is next most influenced.
+As we will see below, this difference in classified land area leads to
+great differences in calculate pasture yields in RS. Other study area
+states have relatively small areas of grassland so are less affected by
+the inclusion, although Santa Catarina (a small state on the edge of the
+Pampa biome) is next most influenced.
 
-Let's examine these differences between the classifications further quantitatively, looking at both total area and the yield implied when compared to production data.
+Let’s examine these differences between the classifications further
+quantitatively, looking at both total area and the yield implied when
+compared to production data.
 
-Pasture area by state, year and classification
-----------------------------------------------
+## Pasture area by state, year and classification
 
-The figure below shows again that generally the *PastureA* classification produces much less Pasture land area.
+The figure below shows again that generally the *PastureA*
+classification produces much less Pasture land area.
 
-<details><summary>Show/Hide Code</summary>
+<details>
+
+<summary>Show/Hide Code</summary>
+
 <p>
+
 ``` r
 #add classification lable to the CData tables
 for(i in seq_along(cls)){
@@ -298,6 +324,7 @@ CData_Pas <- CDataU %>%
 ```
 
 </p>
+
 </details>
 
 ``` r
@@ -311,15 +338,20 @@ CData_Pas %>%
     ggtitle("Pasture Area by Classification and State")
 ```
 
-![](ClassificationComparison_files/figure-markdown_github/unnamed-chunk-8-1.png)
+![](ClassificationComparison_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
 
-Pasture Yield by state, year and classification
------------------------------------------------
+## Pasture Yield by state, year and classification
 
-This first plot below shows that *PastureA* for Rio Grande do Sul has vastly greater pasture yield than all other classification-state combinations.
+This first plot below shows that *PastureA* for Rio Grande do Sul has
+vastly greater pasture yield than all other classification-state
+combinations.
 
-<details><summary>Show/Hide Code</summary>
+<details>
+
+<summary>Show/Hide Code</summary>
+
 <p>
+
 ``` r
 #Load Production Data
 meat_prod_Astates <- read_excel("Data/Cattle_meat_production_Kg_2001_2018_all_states.xlsx", sheet = "Plan1", skip = 1)  #data for all states Astates
@@ -335,6 +367,7 @@ meat_areas <- meat_areas %>%
 ```
 
 </p>
+
 </details>
 
 ``` r
@@ -348,9 +381,12 @@ meat_areas %>%
     ggtitle("Pasture Yield by Classification and State")
 ```
 
-![](ClassificationComparison_files/figure-markdown_github/unnamed-chunk-12-1.png)
+![](ClassificationComparison_files/figure-gfm/unnamed-chunk-12-1.png)<!-- -->
 
-In fact, values are so large it is difficult to see variation for other states in this plot because of the y-axis scale, so let's repeat this plot but limiting the upper boundary of the yield plotted (to 15,000 kg km-2).
+In fact, values are so large it is difficult to see variation for other
+states in this plot because of the y-axis scale, so let’s repeat this
+plot but limiting the upper boundary of the yield plotted (to 15,000 kg
+km-2).
 
 ``` r
 meat_areas %>% 
@@ -365,18 +401,27 @@ meat_areas %>%
 
     ## Warning: Removed 25 rows containing missing values (geom_bar).
 
-![](ClassificationComparison_files/figure-markdown_github/unnamed-chunk-13-1.png)
+![](ClassificationComparison_files/figure-gfm/unnamed-chunk-13-1.png)<!-- -->
 
-Where bars are missing in the plot above, this is because the value for that bar is greater than 15,000. Now we can see more clearly, that in other states *PastureA* is also generally has the highest yield compared to the other classifications.
+Where bars are missing in the plot above, this is because the value for
+that bar is greater than 15,000. Now we can see more clearly, that in
+other states *PastureA* is also generally has the highest yield compared
+to the other classifications.
 
-Summary stats over time
------------------------
+## Summary stats over time
 
-Now let's summarise the data over time and examine their means and medians (with variation - error bar is one SE) and maxima during 2001-2018.
+Now let’s summarise the data over time and examine their means and
+medians (with variation - error bar is one SE) and maxima during
+2001-2018.
 
-<details><summary>Show/Hide Code</summary>
+<details>
+
+<summary>Show/Hide Code</summary>
+
 <p>
+
 </p>
+
 </details>
 
 ``` r
@@ -395,7 +440,7 @@ meat_summary %>%
 
     ## Warning: Removed 2 rows containing missing values (geom_bar).
 
-![](ClassificationComparison_files/figure-markdown_github/unnamed-chunk-15-1.png)
+![](ClassificationComparison_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
 
 ``` r
 meat_summary %>%
@@ -410,10 +455,10 @@ meat_summary %>%
 ```
 
     ## Warning: Removed 2 rows containing missing values (geom_errorbar).
-
+    
     ## Warning: Removed 2 rows containing missing values (geom_bar).
 
-![](ClassificationComparison_files/figure-markdown_github/unnamed-chunk-15-2.png)
+![](ClassificationComparison_files/figure-gfm/unnamed-chunk-15-2.png)<!-- -->
 
 ``` r
 meat_summary %>%
@@ -428,11 +473,15 @@ meat_summary %>%
 
     ## Warning: Removed 2 rows containing missing values (geom_bar).
 
-![](ClassificationComparison_files/figure-markdown_github/unnamed-chunk-15-3.png)
+![](ClassificationComparison_files/figure-gfm/unnamed-chunk-15-3.png)<!-- -->
 
-In these three plots, we again we see the same pattern; *PastureA* produces greater yields than *PastureB* and *PastureC* (except for Sao Paolo state).
+In these three plots, we again we see the same pattern; *PastureA*
+produces greater yields than *PastureB* and *PastureC* (except for Sao
+Paolo state).
 
-But how do these yields compare to observed and projected yields? The table below presents yields by state and classification (sorted descending on the maximum).
+But how do these yields compare to observed and projected yields? The
+table below presents yields by state and classification (sorted
+descending on the maximum).
 
 ``` r
 int_data <- meat_summary %>%
@@ -441,40 +490,43 @@ int_data <- meat_summary %>%
 kable(arrange(int_data, desc(int_max), state, classification), caption="Intensities, sorted on max values descending")
 ```
 
-| state | classification | source |  int\_mn|  int\_md|  int\_max|  int\_sd|  int\_se|
-|:------|:---------------|:-------|--------:|--------:|---------:|--------:|--------:|
-| RS    | PastureA       | Map    |    49527|    52089|     81027|    17473|  970.708|
-| SC    | PastureA       | Map    |    12605|    14628|     20830|     5139|  285.482|
-| SP    | PastureA       | Map    |     7437|     7504|      9028|     1188|   66.012|
-| SP    | PastureB       | Map    |     7422|     7491|      9006|     1184|   65.800|
-| SC    | PastureB       | Map    |     5780|     6373|      8967|     2135|  118.606|
-| SP    | PastureC       | Map    |     7091|     7093|      8752|     1172|   65.094|
-| SC    | PastureC       | Map    |     4225|     4442|      7337|     1738|   96.548|
-| PR    | PastureA       | Map    |     4944|     4741|      7259|     1259|   69.949|
-| PR    | PastureB       | Map    |     4909|     4699|      7233|     1259|   69.920|
-| PR    | PastureC       | Map    |     4620|     4443|      6966|     1234|   68.554|
-| MT    | PastureA       | Map    |     4700|     4697|      6582|     1079|   59.959|
-| RS    | PastureB       | Map    |     3378|     3701|      4943|      886|   49.226|
-| MT    | PastureB       | Map    |     3473|     3550|      4852|      839|   46.590|
-| MT    | PastureC       | Map    |     3473|     3550|      4852|      839|   46.590|
-| RS    | PastureC       | Map    |     3256|     3548|      4835|      871|   48.388|
-| MS    | PastureA       | Map    |     3788|     3671|      4637|      452|   25.133|
-| GO    | PastureA       | Map    |     2976|     2914|      3811|      587|   32.621|
-| MS    | PastureB       | Map    |     3055|     2984|      3711|      349|   19.390|
-| MS    | PastureC       | Map    |     3045|     2974|      3698|      346|   19.237|
-| TO    | PastureA       | Map    |     2845|     2949|      3461|      482|   26.779|
-| GO    | PastureB       | Map    |     2646|     2536|      3398|      528|   29.348|
-| GO    | PastureC       | Map    |     2640|     2529|      3391|      528|   29.357|
-| MG    | PastureA       | Map    |     1443|     1510|      1977|      380|   21.118|
-| TO    | PastureB       | Map    |     1428|     1526|      1761|      292|   16.244|
-| TO    | PastureC       | Map    |     1428|     1526|      1761|      292|   16.244|
-| MG    | PastureB       | Map    |     1256|     1312|      1724|      333|   18.490|
-| MG    | PastureC       | Map    |     1227|     1283|      1686|      322|   17.901|
-| BA    | PastureA       | Map    |     1022|     1156|      1388|      325|   18.080|
-| BA    | PastureB       | Map    |      842|      955|      1158|      276|   15.316|
-| BA    | PastureC       | Map    |      837|      948|      1153|      274|   15.237|
+| state | classification | source | int\_mn | int\_md | int\_max | int\_sd | int\_se |
+| :---- | :------------- | :----- | ------: | ------: | -------: | ------: | ------: |
+| RS    | PastureA       | Map    |   49527 |   52089 |    81027 |   17473 | 970.708 |
+| SC    | PastureA       | Map    |   12605 |   14628 |    20830 |    5139 | 285.482 |
+| SP    | PastureA       | Map    |    7437 |    7504 |     9028 |    1188 |  66.012 |
+| SP    | PastureB       | Map    |    7422 |    7491 |     9006 |    1184 |  65.800 |
+| SC    | PastureB       | Map    |    5780 |    6373 |     8967 |    2135 | 118.606 |
+| SP    | PastureC       | Map    |    7091 |    7093 |     8752 |    1172 |  65.094 |
+| SC    | PastureC       | Map    |    4225 |    4442 |     7337 |    1738 |  96.548 |
+| PR    | PastureA       | Map    |    4944 |    4741 |     7259 |    1259 |  69.949 |
+| PR    | PastureB       | Map    |    4909 |    4699 |     7233 |    1259 |  69.920 |
+| PR    | PastureC       | Map    |    4620 |    4443 |     6966 |    1234 |  68.554 |
+| MT    | PastureA       | Map    |    4700 |    4697 |     6582 |    1079 |  59.959 |
+| RS    | PastureB       | Map    |    3378 |    3701 |     4943 |     886 |  49.226 |
+| MT    | PastureB       | Map    |    3473 |    3550 |     4852 |     839 |  46.590 |
+| MT    | PastureC       | Map    |    3473 |    3550 |     4852 |     839 |  46.590 |
+| RS    | PastureC       | Map    |    3256 |    3548 |     4835 |     871 |  48.388 |
+| MS    | PastureA       | Map    |    3788 |    3671 |     4637 |     452 |  25.133 |
+| GO    | PastureA       | Map    |    2976 |    2914 |     3811 |     587 |  32.621 |
+| MS    | PastureB       | Map    |    3055 |    2984 |     3711 |     349 |  19.390 |
+| MS    | PastureC       | Map    |    3045 |    2974 |     3698 |     346 |  19.237 |
+| TO    | PastureA       | Map    |    2845 |    2949 |     3461 |     482 |  26.779 |
+| GO    | PastureB       | Map    |    2646 |    2536 |     3398 |     528 |  29.348 |
+| GO    | PastureC       | Map    |    2640 |    2529 |     3391 |     528 |  29.357 |
+| MG    | PastureA       | Map    |    1443 |    1510 |     1977 |     380 |  21.118 |
+| TO    | PastureB       | Map    |    1428 |    1526 |     1761 |     292 |  16.244 |
+| TO    | PastureC       | Map    |    1428 |    1526 |     1761 |     292 |  16.244 |
+| MG    | PastureB       | Map    |    1256 |    1312 |     1724 |     333 |  18.490 |
+| MG    | PastureC       | Map    |    1227 |    1283 |     1686 |     322 |  17.901 |
+| BA    | PastureA       | Map    |    1022 |    1156 |     1388 |     325 |  18.080 |
+| BA    | PastureB       | Map    |     842 |     955 |     1158 |     276 |  15.316 |
+| BA    | PastureC       | Map    |     837 |     948 |     1153 |     274 |  15.237 |
 
-We can also calculate the mean state maximum across all years for each of the classifications:
+Intensities, sorted on max values descending
+
+We can also calculate the mean state maximum across all years for each
+of the classifications:
 
 ``` r
 meat_summary %>%
@@ -490,15 +542,34 @@ meat_summary %>%
     ## 2 PastureB         4675.
     ## 3 PastureC         4443.
 
-Largest values for *PastureB* and *PastureC* seem reasonable and align well with expected future yields (important to have a max contemporary yield that is feasible in future, to be able to run the model into the future). For example, [this report](http://csr.ufmg.br/pecuaria/portfolio-item/cenarios-para-o-brasil/) expects yields of 8,730kg/km2 in 2030 if the Brazilian sector continues to modernize (in "Produção de @/hectare" @ is equivalent to 15kg). This potential aligns well with the maximum previously observed intensity of 9,100kg/km2 (which is likely an outlier given remaining uncertainty in land cover classification). Ultimately, the *PastureA* classification produces yield values which are just not feasible relatively to observed values.
+Largest values for *PastureB* and *PastureC* seem reasonable and align
+well with expected future yields (important to have a max contemporary
+yield that is feasible in future, to be able to run the model into the
+future). For example, [this
+report](http://csr.ufmg.br/pecuaria/portfolio-item/cenarios-para-o-brasil/)
+expects yields of 8,730kg/km2 in 2030 if the Brazilian sector continues
+to modernize (in “Produção de @/hectare” @ is equivalent to 15kg). This
+potential aligns well with the maximum previously observed intensity of
+9,100kg/km2 (which is likely an outlier given remaining uncertainty in
+land cover classification). Ultimately, the *PastureA* classification
+produces yield values which are just not feasible relatively to observed
+values.
 
-Post-Disaggregation Classiifcation
-==================================
+# Post-Disaggregation Classiifcation
 
-Now that we have discounted the *PastureA* classification, let's examine *PastureB* and *PastureC* in more detail after they have been disaggregated using planted area data (see `ClassifyDisaggregateMap.r`). We'll repeat much of the above analysis, but using disaggregated maps as input.
+Now that we have discounted the *PastureA* classification, let’s examine
+*PastureB* and *PastureC* in more detail after they have been
+disaggregated using planted area data (see `ClassifyDisaggregateMap.r`).
+We’ll repeat much of the above analysis, but using disaggregated maps as
+input.
 
-<details><summary>Show/Hide Code</summary>
+<details>
+
+<summary>Show/Hide
+Code</summary>
+
 <p>
+
 ``` r
 #Specify classifications and years to examine. Classifications should be the names of Sheets in the Classifications Excel file. Years should be between 2001 and 2018
 
@@ -685,12 +756,14 @@ meat_areas <- meat_areas %>%
 ```
 
 </p>
+
 </details>
 
-Pasture Yield by state, year and classification
------------------------------------------------
+## Pasture Yield by state, year and classification
 
-We see that in general there is little difference between the two classifications; Santa Catarina state has possibly the largest differences with *PastureB* resulting in greater Pasture yields.
+We see that in general there is little difference between the two
+classifications; Santa Catarina state has possibly the largest
+differences with *PastureB* resulting in greater Pasture yields.
 
 ``` r
 meat_areas %>% 
@@ -704,16 +777,22 @@ meat_areas %>%
     ggtitle("Pasture Yield by Classification and State")
 ```
 
-![](ClassificationComparison_files/figure-markdown_github/unnamed-chunk-22-1.png)
+![](ClassificationComparison_files/figure-gfm/unnamed-chunk-22-1.png)<!-- -->
 
-Summary stats over time
------------------------
+## Summary stats over time
 
-Now let's summarise the data over time again, and examine their means and medians (with variation - error bar is one SE) and maxima during 2001-2018.
+Now let’s summarise the data over time again, and examine their means
+and medians (with variation - error bar is one SE) and maxima during
+2001-2018.
 
-<details><summary>Show/Hide Code</summary>
+<details>
+
+<summary>Show/Hide Code</summary>
+
 <p>
+
 </p>
+
 </details>
 
 ``` r
@@ -729,7 +808,7 @@ meat_summary %>%
   ggtitle("Pasture Yield, Mean")
 ```
 
-![](ClassificationComparison_files/figure-markdown_github/unnamed-chunk-24-1.png)
+![](ClassificationComparison_files/figure-gfm/unnamed-chunk-24-1.png)<!-- -->
 
 ``` r
 meat_summary %>%
@@ -744,7 +823,7 @@ meat_summary %>%
   ggtitle("Pasture Yield, Median")
 ```
 
-![](ClassificationComparison_files/figure-markdown_github/unnamed-chunk-24-2.png)
+![](ClassificationComparison_files/figure-gfm/unnamed-chunk-24-2.png)<!-- -->
 
 ``` r
 meat_summary %>%
@@ -759,11 +838,14 @@ meat_summary %>%
   ggtitle("Pasture Yield, Maxima")
 ```
 
-![](ClassificationComparison_files/figure-markdown_github/unnamed-chunk-24-3.png)
+![](ClassificationComparison_files/figure-gfm/unnamed-chunk-24-3.png)<!-- -->
 
-As above, when looking at summaries we see that the two classifications are generally similar, but with *PastureB* producing more land area, notably for Santa Catarina, Sao Paolo and Parana.
+As above, when looking at summaries we see that the two classifications
+are generally similar, but with *PastureB* producing more land area,
+notably for Santa Catarina, Sao Paolo and Parana.
 
-Let's look again at yields by state and classification (sorted descending on the maximum).
+Let’s look again at yields by state and classification (sorted
+descending on the maximum).
 
 ``` r
 int_data <- meat_summary %>%
@@ -774,30 +856,33 @@ int_data <- meat_summary %>%
 kable(arrange(int_data, desc(int_max), state, classification), caption="Intensities, sorted on max values descending")
 ```
 
-| state | classification | source |  int\_mn|  int\_md|  int\_max|  int\_sd|  int\_se|
-|:------|:---------------|:-------|--------:|--------:|---------:|--------:|--------:|
-| SC    | PastureB       | Map    |     5872|     6485|      9126|     2177|  120.966|
-| SP    | PastureB       | Map    |     7462|     7533|      9063|     1193|   66.253|
-| SP    | PastureC       | Map    |     7132|     7133|      8811|     1181|   65.594|
-| SC    | PastureC       | Map    |     4286|     4509|      7449|     1768|   98.217|
-| PR    | PastureB       | Map    |     4947|     4739|      7285|     1267|   70.412|
-| PR    | PastureC       | Map    |     4661|     4485|      7022|     1244|   69.100|
-| MT    | PastureB       | Map    |     3741|     3811|      5218|      902|   50.090|
-| MT    | PastureC       | Map    |     3741|     3811|      5218|      902|   50.090|
-| RS    | PastureB       | Map    |     3393|     3718|      4963|      890|   49.430|
-| RS    | PastureC       | Map    |     3275|     3569|      4856|      874|   48.581|
-| MS    | PastureB       | Map    |     3093|     3024|      3751|      351|   19.508|
-| MS    | PastureC       | Map    |     3084|     3015|      3740|      349|   19.366|
-| GO    | PastureB       | Map    |     2685|     2572|      3452|      538|   29.880|
-| GO    | PastureC       | Map    |     2678|     2566|      3444|      538|   29.889|
-| TO    | PastureB       | Map    |     1725|     1836|      2131|      345|   19.156|
-| TO    | PastureC       | Map    |     1725|     1836|      2131|      345|   19.156|
-| MG    | PastureB       | Map    |     1274|     1330|      1749|      338|   18.762|
-| MG    | PastureC       | Map    |     1244|     1301|      1711|      327|   18.160|
-| BA    | PastureB       | Map    |      860|      975|      1181|      281|   15.626|
-| BA    | PastureC       | Map    |      855|      968|      1176|      280|   15.546|
+| state | classification | source | int\_mn | int\_md | int\_max | int\_sd | int\_se |
+| :---- | :------------- | :----- | ------: | ------: | -------: | ------: | ------: |
+| SC    | PastureB       | Map    |    5872 |    6485 |     9126 |    2177 | 120.966 |
+| SP    | PastureB       | Map    |    7462 |    7533 |     9063 |    1193 |  66.253 |
+| SP    | PastureC       | Map    |    7132 |    7133 |     8811 |    1181 |  65.594 |
+| SC    | PastureC       | Map    |    4286 |    4509 |     7449 |    1768 |  98.217 |
+| PR    | PastureB       | Map    |    4947 |    4739 |     7285 |    1267 |  70.412 |
+| PR    | PastureC       | Map    |    4661 |    4485 |     7022 |    1244 |  69.100 |
+| MT    | PastureB       | Map    |    3741 |    3811 |     5218 |     902 |  50.090 |
+| MT    | PastureC       | Map    |    3741 |    3811 |     5218 |     902 |  50.090 |
+| RS    | PastureB       | Map    |    3393 |    3718 |     4963 |     890 |  49.430 |
+| RS    | PastureC       | Map    |    3275 |    3569 |     4856 |     874 |  48.581 |
+| MS    | PastureB       | Map    |    3093 |    3024 |     3751 |     351 |  19.508 |
+| MS    | PastureC       | Map    |    3084 |    3015 |     3740 |     349 |  19.366 |
+| GO    | PastureB       | Map    |    2685 |    2572 |     3452 |     538 |  29.880 |
+| GO    | PastureC       | Map    |    2678 |    2566 |     3444 |     538 |  29.889 |
+| TO    | PastureB       | Map    |    1725 |    1836 |     2131 |     345 |  19.156 |
+| TO    | PastureC       | Map    |    1725 |    1836 |     2131 |     345 |  19.156 |
+| MG    | PastureB       | Map    |    1274 |    1330 |     1749 |     338 |  18.762 |
+| MG    | PastureC       | Map    |    1244 |    1301 |     1711 |     327 |  18.160 |
+| BA    | PastureB       | Map    |     860 |     975 |     1181 |     281 |  15.626 |
+| BA    | PastureC       | Map    |     855 |     968 |     1176 |     280 |  15.546 |
 
-And the mean state maximum across all years for each of the classifications:
+Intensities, sorted on max values descending
+
+And the mean state maximum across all years for each of the
+classifications:
 
 ``` r
 meat_summary %>%
@@ -814,11 +899,22 @@ meat_summary %>%
     ## 1 PastureB         4792.
     ## 2 PastureC         4556.
 
-Yield values are generally quite similar to those calculated for non-disaggregated maps.
+Yield values are generally quite similar to those calculated for
+non-disaggregated maps.
 
-So, overall there is not much difference between the two classifications. We we will chose the *PastureB* classification as it seems to make more sense to include the MapBiomas *Mosaic of Agriculture and Pasture* class as Agriculture prior to disaggregation (given the disaggregation process used).
+So, overall there is not much difference between the two
+classifications. We we will chose the *PastureB* classification as it
+seems to make more sense to include the MapBiomas *Mosaic of Agriculture
+and Pasture* class as Agriculture prior to disaggregation (given the
+disaggregation process used).
 
-CRAFTY Service Provision
-------------------------
+## CRAFTY Service Provision
 
-Having chosem the *PastureB* classification, we now need to identify the some indication of 'perfect' yield in our data to enable conversion of meat production (in kg) to CRAFTY service production units. We could use the maximum yield observed in our data (~9,100 kg/sq km) but to allow room for future scenarios of extraordinary continued yield improvement, we will use a higher value of 11,000 kg/sq km. In turn, 11,000 kg/sq km == **0.275 gg/25sq km** We will use this value as a single unit of of 'Pasture service' from CRAFTY.
+Having chosem the *PastureB* classification, we now need to identify the
+some indication of ‘perfect’ yield in our data to enable conversion of
+meat production (in kg) to CRAFTY service production units. We could use
+the maximum yield observed in our data (~9,100 kg/sq km) but to allow
+room for future scenarios of extraordinary continued yield improvement,
+we will use a higher value of 11,000 kg/sq km. In turn, 11,000 kg/sq km
+== **0.275 gg/25sq km** We will use this value as a single unit of of
+‘Pasture service’ from CRAFTY.
