@@ -8,8 +8,9 @@ Scripts should be run in the following order:
 - [ClassifyDisaggregate.r](ClassifyDisaggregate.r) classifies MapBiomas maps (possibly output from [ResampleMosaic.r](ResampleMosaic.r)) then optionally uses planted area data to improve classification
 - [ClassificationComparison.Rmd](ClassificationComparison.Rmd) present code and analyses of pasture areas, meat production and pasture yield for all states 2001-2018, for three different classifications of the MapBiomas data both with and without disaggregation using planted area data.
 
+Ancillary data are in the Data directory. 
 
 ## Notes on [ClassifyDisaggregate.r](ClassifyDisaggregate.r)
 
-- See the included Excel spreadsheet [MapBiomas_CRAFTY_classifications_v4.xlsx](MapBiomas_CRAFTY_classifications_v4.xlsx) for example classifications (and those examined in [ClassificationComparison.Rmd](ClassificationComparison.Rmd)
+- See the included Excel spreadsheet [MapBiomas_CRAFTY_classifications_v4.xlsx](Data/MapBiomas_CRAFTY_classifications_v4.xlsx) for example classifications (and those examined in [ClassificationComparison.Rmd](ClassificationComparison.Rmd)
 - In all classifications, Pasture in areas of land protection is designated as ‘Nature’
