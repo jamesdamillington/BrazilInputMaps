@@ -1,6 +1,6 @@
 # BrazilInputMaps
 
-Manipulating [MapBiomas](https://mapbiomas.org/en/) (version 4) data for land cover maps to use in CRAFTY-Brazil
+Manipulating [MapBiomas](https://mapbiomas.org/en/) (version 4) data for land cover maps to use in the [CRAFTY Brazil](https://github.com/jamesdamillington/CRAFTY_Brazil) ABM simulation model.
 
 Scripts should be run in the following order:
 - [BaseRaster.r](BaseRaster.r) used to create a raster file from a shapefile used in other scripts
