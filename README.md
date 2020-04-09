@@ -1,4 +1,5 @@
 # BrazilInputMaps
+[![DOI](https://zenodo.org/badge/203189584.svg)](https://zenodo.org/badge/latestdoi/203189584)
 
 Manipulating [MapBiomas](https://mapbiomas.org/en/) (version 4) data for land cover maps to use in the [CRAFTY Brazil](https://github.com/jamesdamillington/CRAFTY_Brazil) ABM simulation model.
 
